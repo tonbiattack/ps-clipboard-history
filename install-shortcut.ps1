@@ -48,20 +48,19 @@ if (-not (Test-Path -LiteralPath $windowsPowerShell -PathType Leaf)) {
     $windowsPowerShell = (Get-Command powershell.exe -ErrorAction Stop).Source
 }
 
-$shell = New-Object -ComObject WScript.Shell
-$shortcut = $shell.CreateShortcut($shortcutPath)
-$shortcut.TargetPath = $windowsPowerShell
-$shortcut.Arguments = '-NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}"' -f $selectorPath
-$shortcut.WorkingDirectory = $PSScriptRoot
-$shortcut.Description = 'Open ps-clipboard-history'
-$shortcut.Hotkey = 'CTRL+ALT+V'
-$shortcut.IconLocation = "$windowsPowerShell,0"
-$shortcut.Save()
-
 $wscript = Join-Path $env:WINDIR 'System32\wscript.exe'
 if (-not (Test-Path -LiteralPath $wscript -PathType Leaf)) {
     $wscript = (Get-Command wscript.exe -ErrorAction Stop).Source
 }
+
+$shell = New-Object -ComObject WScript.Shell
+$shortcut = $shell.CreateShortcut($shortcutPath)
+$shortcut.TargetPath = $wscript
+$shortcut.Arguments = '"{0}"' -f $watcherLauncherPath
+$shortcut.WorkingDirectory = $PSScriptRoot
+$shortcut.Description = 'Open the Clipboard History resident app'
+$shortcut.IconLocation = "$windowsPowerShell,0"
+$shortcut.Save()
 
 $watcherShortcut = $shell.CreateShortcut($watcherShortcutPath)
 $watcherShortcut.TargetPath = $wscript
@@ -72,5 +71,4 @@ $watcherShortcut.IconLocation = "$windowsPowerShell,0"
 $watcherShortcut.Save()
 
 Write-Host "Created shortcut: $shortcutPath"
-Write-Host 'Shortcut key: Ctrl + Alt + V (change it in shortcut properties if needed).'
 Write-Host "Created startup watcher: $watcherShortcutPath"
