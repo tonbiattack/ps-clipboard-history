@@ -15,15 +15,13 @@ function Get-ClipboardHistoryPath {
 function New-ClipboardHistoryItem {
     param(
         [Parameter(Mandatory = $true)][string] $Content,
-        [datetime] $Timestamp = (Get-Date),
-        [int] $UseCount = 1
+        [datetime] $Timestamp = (Get-Date)
     )
 
     [pscustomobject]@{
         content    = $Content
         createdAt  = $Timestamp.ToString('o')
         lastUsedAt = $Timestamp.ToString('o')
-        useCount   = $UseCount
     }
 }
 
@@ -45,9 +43,11 @@ function Get-ClipboardHistory {
         # Flatten it so sorting and history updates work for more than one item.
         $items = @($json | ConvertFrom-Json | ForEach-Object { $_ })
         foreach ($item in $items) {
-            if ($null -eq $item.content -or $null -eq $item.createdAt -or $null -eq $item.lastUsedAt -or $null -eq $item.useCount) {
+            if ($null -eq $item.content -or $null -eq $item.createdAt -or $null -eq $item.lastUsedAt) {
                 throw 'The history file has an invalid item.'
             }
+            # Remove the no-longer-used counter from histories written by older versions.
+            [void]$item.PSObject.Properties.Remove('useCount')
         }
         return @($items | Sort-Object { [datetime]$_.lastUsedAt } -Descending)
     }
@@ -104,7 +104,6 @@ function Add-ClipboardHistoryItem {
     if ($existing.Count -gt 0) {
         $item = $existing[0]
         $item.lastUsedAt = $now.ToString('o')
-        $item.useCount = [int]$item.useCount + 1
     }
     else {
         $items += New-ClipboardHistoryItem -Content $Content -Timestamp $now
@@ -129,7 +128,6 @@ function Use-ClipboardHistoryItem {
     }
 
     $matches[0].lastUsedAt = (Get-Date).ToString('o')
-    $matches[0].useCount = [int]$matches[0].useCount + 1
     $items = @($items | Sort-Object { [datetime]$_.lastUsedAt } -Descending | Select-Object -First $MaxHistory)
     Save-ClipboardHistory -Items $items -Path $Path
     return $true
@@ -163,7 +161,6 @@ function Show-ClipboardHistoryPicker {
     $displayItems = foreach ($item in $items) {
         [pscustomobject]@{
             LastUsed = ([datetime]$item.lastUsedAt).ToString('yyyy/MM/dd HH:mm')
-            Count    = [int]$item.useCount
             Preview  = Get-ClipboardHistoryPreview -Content ([string]$item.content)
             Content  = [string]$item.content
         }
@@ -173,13 +170,13 @@ function Show-ClipboardHistoryPicker {
         throw 'Out-GridView is unavailable. Start clipboard-select.ps1 from a visible PowerShell window instead.'
     }
 
-    $selectedDisplay = $displayItems | Select-Object LastUsed, Count, Preview | Out-GridView -Title 'Clipboard history' -PassThru
+    $selectedDisplay = $displayItems | Select-Object LastUsed, Preview | Out-GridView -Title 'Clipboard history' -PassThru
     if ($null -eq $selectedDisplay) {
         return $false
     }
 
     $selected = $displayItems | Where-Object {
-        $_.LastUsed -eq $selectedDisplay.LastUsed -and $_.Count -eq $selectedDisplay.Count -and $_.Preview -eq $selectedDisplay.Preview
+        $_.LastUsed -eq $selectedDisplay.LastUsed -and $_.Preview -eq $selectedDisplay.Preview
     } | Select-Object -First 1
 
     if ($null -eq $selected) {

@@ -73,8 +73,7 @@ ps-clipboard-history/
 {
   "content": "git status",
   "createdAt": "2026-09-11T00:00:00",
-  "lastUsedAt": "2026-09-11T00:00:00",
-  "useCount": 1
+  "lastUsedAt": "2026-09-11T00:00:00"
 }
 ```
 
@@ -114,7 +113,6 @@ MAX_HISTORY = 50
 
 ```text
 lastUsedAt = 現在時刻
-useCount += 1
 ```
 
 その履歴を一覧の先頭に移動する。
@@ -140,10 +138,10 @@ lastUsedAt DESC
 表示例:
 
 ```text
-LastUsed             Count   Preview
-2026/09/11 00:15     5       git rebase origin/main
-2026/09/11 00:10     2       SELECT * FROM users...
-2026/09/11 00:03     1       npm run build
+LastUsed             Preview
+2026/09/11 00:15     git rebase origin/main
+2026/09/11 00:10     SELECT * FROM users...
+2026/09/11 00:03     npm run build
 ```
 
 選択した項目を `Set-Clipboard` で現在のクリップボードへ戻す。
@@ -154,7 +152,6 @@ LastUsed             Count   Preview
 
 ```text
 lastUsedAt = 現在時刻
-useCount += 1
 ```
 
 として更新する。
