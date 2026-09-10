@@ -5,7 +5,7 @@ Describe 'install-shortcut.ps1' {
         $script:watcherShortcutDirectory = Join-Path $TestDrive 'startup'
     }
 
-    It 'creates a desktop-style shortcut for the selector with Ctrl+Alt+V' {
+    It 'creates desktop and startup shortcuts without a StartMenu option' {
         & $installScript -ShortcutDirectory $shortcutDirectory -WatcherShortcutDirectory $watcherShortcutDirectory
 
         $shortcutPath = Join-Path $shortcutDirectory 'Clipboard History.lnk'

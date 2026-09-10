@@ -1,7 +1,5 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('Desktop', 'StartMenu')]
-    [string] $Destination = 'Desktop',
     [string] $ShortcutDirectory,
     [string] $WatcherShortcutDirectory,
     [switch] $Force
@@ -20,12 +18,7 @@ if (-not (Test-Path -LiteralPath $watcherLauncherPath -PathType Leaf)) {
 }
 
 if ([string]::IsNullOrWhiteSpace($ShortcutDirectory)) {
-    if ($Destination -eq 'Desktop') {
-        $ShortcutDirectory = [Environment]::GetFolderPath([Environment+SpecialFolder]::DesktopDirectory)
-    }
-    else {
-        $ShortcutDirectory = [Environment]::GetFolderPath([Environment+SpecialFolder]::Programs)
-    }
+    $ShortcutDirectory = [Environment]::GetFolderPath([Environment+SpecialFolder]::DesktopDirectory)
 }
 
 if (-not (Test-Path -LiteralPath $ShortcutDirectory -PathType Container)) {
