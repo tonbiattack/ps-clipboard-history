@@ -109,16 +109,37 @@ public sealed class ClipboardHistoryHotkeyForm : Form
 
     $form = [ClipboardHistoryHotkeyForm]::new()
     $timer = [System.Windows.Forms.Timer]::new()
+    $menu = [System.Windows.Forms.ContextMenuStrip]::new()
+    $openMenuItem = $menu.Items.Add('Open history')
+    $exitMenuItem = $menu.Items.Add('Exit')
+    $notifyIcon = [System.Windows.Forms.NotifyIcon]::new()
+    $notifyIcon.Icon = [System.Drawing.SystemIcons]::Application
+    $notifyIcon.Text = 'Clipboard History'
+    $notifyIcon.ContextMenuStrip = $menu
+
+    $openHistory = {
+        Show-ClipboardHistoryPicker -Path $HistoryPath -MaxHistory $MaxHistory | Out-Null
+    }
+
     $timer.Interval = $IntervalMilliseconds
     $timer.Add_Tick($recordClipboard)
-    $form.Add_HotkeyPressed({
-        Show-ClipboardHistoryPicker -Path $HistoryPath -MaxHistory $MaxHistory | Out-Null
-    })
+    $form.Add_HotkeyPressed($openHistory)
+    $openMenuItem.Add_Click($openHistory)
+    $notifyIcon.Add_DoubleClick($openHistory)
+    $exitMenuItem.Add_Click({ $form.Close() })
 
     $timer.Start()
+    $notifyIcon.Visible = $true
     [System.Windows.Forms.Application]::Run($form)
 }
 finally {
+    if ($null -ne $notifyIcon) {
+        $notifyIcon.Visible = $false
+        $notifyIcon.Dispose()
+    }
+    if ($null -ne $menu) {
+        $menu.Dispose()
+    }
     if ($null -ne $timer) {
         $timer.Dispose()
     }
