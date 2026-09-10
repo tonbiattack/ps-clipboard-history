@@ -44,7 +44,6 @@ try {
             foreach ($item in $items) {
                 $rowIndex = $state.Grid.Rows.Add(
                     ([datetime]$item.lastUsedAt).ToString('yyyy/MM/dd HH:mm:ss'),
-                    [int]$item.useCount,
                     (Get-ClipboardHistoryPreview -Content ([string]$item.content))
                 )
                 $row = $state.Grid.Rows[$rowIndex]
@@ -88,10 +87,8 @@ try {
         $grid.RowHeadersVisible = $false
 
         [void]$grid.Columns.Add('LastUsed', 'Last used')
-        [void]$grid.Columns.Add('Count', 'Count')
         [void]$grid.Columns.Add('Preview', 'Preview')
         $grid.Columns['LastUsed'].Width = 150
-        $grid.Columns['Count'].Width = 60
         $grid.Columns['Preview'].AutoSizeMode = [System.Windows.Forms.DataGridViewAutoSizeColumnMode]::Fill
 
         $status = [System.Windows.Forms.Label]::new()
@@ -106,12 +103,13 @@ try {
         $state.Grid = $grid
         $state.Status = $status
 
-        $grid.Add_SelectionChanged({
-            if ($state.IsRefreshing -or $state.Grid.SelectedRows.Count -eq 0) {
+        $grid.Add_CellClick({
+            param($sender, $eventArgs)
+            if ($state.IsRefreshing -or $eventArgs.RowIndex -lt 0) {
                 return
             }
 
-            $content = [string]$state.Grid.SelectedRows[0].Tag
+            $content = [string]$state.Grid.Rows[$eventArgs.RowIndex].Tag
             if ([string]::IsNullOrWhiteSpace($content)) {
                 return
             }
@@ -119,7 +117,7 @@ try {
             Set-Clipboard -Value $content
             Use-ClipboardHistoryItem -Content $content -Path $HistoryPath -MaxHistory $MaxHistory | Out-Null
             $state.PreviousContent = $content
-            $state.Status.Text = 'Copied to clipboard.'
+            $state.Status.Text = 'Copied to clipboard. Arrow keys only change selection.'
             & $refreshHistoryGrid
         })
 

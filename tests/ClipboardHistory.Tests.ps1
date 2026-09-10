@@ -11,15 +11,14 @@ Describe 'ClipboardHistory' {
         $items = @(Get-ClipboardHistory -Path $historyPath)
         $items.Count | Should -Be 1
         $items[0].content | Should -Be "line one`nline two"
-        $items[0].useCount | Should -Be 1
     }
 
-    It 'deduplicates content and increments its use count' {
+    It 'deduplicates content without storing a use count' {
         Add-ClipboardHistoryItem -Content 'git status' -Path $historyPath | Out-Null
         Add-ClipboardHistoryItem -Content 'git status' -Path $historyPath | Out-Null
         $items = @(Get-ClipboardHistory -Path $historyPath)
         $items.Count | Should -Be 1
-        $items[0].useCount | Should -Be 2
+        $items[0].PSObject.Properties.Name | Should -Not -Contain 'useCount'
     }
 
     It 'keeps only the requested number of most recently used items' {
