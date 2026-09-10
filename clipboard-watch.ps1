@@ -112,14 +112,7 @@ public sealed class ClipboardHistoryHotkeyForm : Form
     $timer.Interval = $IntervalMilliseconds
     $timer.Add_Tick($recordClipboard)
     $form.Add_HotkeyPressed({
-        $windowsPowerShell = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
-        Start-Process -FilePath $windowsPowerShell -WindowStyle Hidden -ArgumentList @(
-            '-NoLogo',
-            '-NoProfile',
-            '-ExecutionPolicy', 'Bypass',
-            '-WindowStyle', 'Hidden',
-            '-File', ('"{0}"' -f (Join-Path $PSScriptRoot 'clipboard-select.ps1'))
-        )
+        Show-ClipboardHistoryPicker -Path $HistoryPath -MaxHistory $MaxHistory | Out-Null
     })
 
     $timer.Start()

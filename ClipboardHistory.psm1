@@ -146,4 +146,47 @@ function Get-ClipboardHistoryPreview {
     return $preview
 }
 
-Export-ModuleMember -Function Get-ClipboardHistoryPath, Get-ClipboardHistory, Save-ClipboardHistory, Add-ClipboardHistoryItem, Use-ClipboardHistoryItem, Get-ClipboardHistoryPreview
+function Show-ClipboardHistoryPicker {
+    [CmdletBinding()]
+    param(
+        [string] $Path,
+        [ValidateRange(1, 2147483647)][int] $MaxHistory = 50
+    )
+
+    $items = @(Get-ClipboardHistory -Path $Path)
+    if ($items.Count -eq 0) {
+        return $false
+    }
+
+    $displayItems = foreach ($item in $items) {
+        [pscustomobject]@{
+            LastUsed = ([datetime]$item.lastUsedAt).ToString('yyyy/MM/dd HH:mm')
+            Count    = [int]$item.useCount
+            Preview  = Get-ClipboardHistoryPreview -Content ([string]$item.content)
+            Content  = [string]$item.content
+        }
+    }
+
+    if (-not (Get-Command Out-GridView -ErrorAction SilentlyContinue)) {
+        throw 'Out-GridView is unavailable. Start clipboard-select.ps1 from a visible PowerShell window instead.'
+    }
+
+    $selectedDisplay = $displayItems | Select-Object LastUsed, Count, Preview | Out-GridView -Title 'Clipboard history' -PassThru
+    if ($null -eq $selectedDisplay) {
+        return $false
+    }
+
+    $selected = $displayItems | Where-Object {
+        $_.LastUsed -eq $selectedDisplay.LastUsed -and $_.Count -eq $selectedDisplay.Count -and $_.Preview -eq $selectedDisplay.Preview
+    } | Select-Object -First 1
+
+    if ($null -eq $selected) {
+        return $false
+    }
+
+    Set-Clipboard -Value $selected.Content
+    Use-ClipboardHistoryItem -Content $selected.Content -Path $Path -MaxHistory $MaxHistory | Out-Null
+    return $true
+}
+
+Export-ModuleMember -Function Get-ClipboardHistoryPath, Get-ClipboardHistory, Save-ClipboardHistory, Add-ClipboardHistoryItem, Use-ClipboardHistoryItem, Get-ClipboardHistoryPreview, Show-ClipboardHistoryPicker
