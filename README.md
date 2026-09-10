@@ -9,11 +9,10 @@ Windows のテキストクリップボードをローカル JSON に保存し、
 
 ## 使い方
 
-監視を開始します。既定では 500ms ごとに確認し、`%LOCALAPPDATA%\clipboard-history\history.json` に最大 50 件を保存します。
+監視はコンソールを表示しない起動ランチャー経由で開始します。既定では 500ms ごとに確認し、`%LOCALAPPDATA%\clipboard-history\history.json` に最大 50 件を保存します。
 
 ```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-.\clipboard-watch.ps1
+wscript.exe .\clipboard-watch.vbs
 ```
 
 初回だけ、履歴画面を起動するデスクトップショートカットを作成します。
@@ -22,7 +21,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\install-shortcut.ps1
 ```
 
-作成される **Clipboard History** ショートカットは `clipboard-select.ps1` を `-NoProfile` とプロセス限定の `-ExecutionPolicy Bypass` で起動します。システム全体の実行ポリシーは変更しません。既存の同名ショートカットを置き換える場合は `-Force` を付けてください。
+作成される **Clipboard History** ショートカットは `clipboard-select.ps1` を、PowerShell の黒いコンソールを表示せずに起動します。同時に、ログイン時に監視を開始する **Clipboard History Watcher** ショートカットを現在ユーザーのスタートアップフォルダへ作成します。どちらも `-NoProfile` とプロセス限定の `-ExecutionPolicy Bypass` を使用し、システム全体の実行ポリシーは変更しません。既存の同名ショートカットを置き換える場合は `-Force` を付けてください。
 
 既定のショートカットキーは `Ctrl + Alt + V` です。ショートカットのプロパティから変更できます。`Win + V` は変更せず、Windows 標準のクリップボード履歴として併用します。
 
@@ -40,7 +39,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 
 ## オプション
 
-両方のスクリプトは `-HistoryPath` と `-MaxHistory` を受け取ります。監視スクリプトには `-IntervalMilliseconds`（既定 500）、`-MaxContentLength`（既定 10000）、テスト向けの `-RunOnce` もあります。
+両方のスクリプトは `-HistoryPath` と `-MaxHistory` を受け取ります。監視スクリプトには `-IntervalMilliseconds`（既定 500）、`-MaxContentLength`（既定 10000）、テスト向けの `-RunOnce` と `-MutexName` もあります。
 
 ```powershell
 .\clipboard-watch.ps1 -HistoryPath "$env:TEMP\history.json" -MaxHistory 100
