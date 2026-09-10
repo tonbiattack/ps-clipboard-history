@@ -41,7 +41,9 @@ function Get-ClipboardHistory {
         if ([string]::IsNullOrWhiteSpace($json)) {
             throw 'The history file is empty.'
         }
-        $items = @($json | ConvertFrom-Json)
+        # Windows PowerShell 5.1 emits a JSON array as one Object[] pipeline value.
+        # Flatten it so sorting and history updates work for more than one item.
+        $items = @($json | ConvertFrom-Json | ForEach-Object { $_ })
         foreach ($item in $items) {
             if ($null -eq $item.content -or $null -eq $item.createdAt -or $null -eq $item.lastUsedAt -or $null -eq $item.useCount) {
                 throw 'The history file has an invalid item.'

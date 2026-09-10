@@ -18,14 +18,132 @@ if (-not $mutex.WaitOne(0, $false)) {
 }
 
 try {
-    $previousContent = $null
+    $state = [pscustomobject]@{
+        PreviousContent = $null
+        IsRefreshing    = $false
+        HistoryForm     = $null
+        Grid            = $null
+        Status          = $null
+    }
+
+    $refreshHistoryGrid = {
+        if ($null -eq $state.Grid -or $state.HistoryForm.IsDisposed) {
+            return
+        }
+
+        $selectedContent = $null
+        if ($state.Grid.SelectedRows.Count -gt 0) {
+            $selectedContent = [string]$state.Grid.SelectedRows[0].Tag
+        }
+
+        $state.IsRefreshing = $true
+        try {
+            $state.Grid.Rows.Clear()
+            $items = @(Get-ClipboardHistory -Path $HistoryPath)
+            $selectedRow = $null
+            foreach ($item in $items) {
+                $rowIndex = $state.Grid.Rows.Add(
+                    ([datetime]$item.lastUsedAt).ToString('yyyy/MM/dd HH:mm:ss'),
+                    [int]$item.useCount,
+                    (Get-ClipboardHistoryPreview -Content ([string]$item.content))
+                )
+                $row = $state.Grid.Rows[$rowIndex]
+                $row.Tag = [string]$item.content
+                if ($row.Tag -ceq $selectedContent) {
+                    $selectedRow = $row
+                }
+            }
+
+            if ($null -ne $selectedRow) {
+                $selectedRow.Selected = $true
+            }
+        }
+        finally {
+            $state.IsRefreshing = $false
+        }
+    }
+
+    $openHistory = {
+        if ($null -ne $state.HistoryForm -and -not $state.HistoryForm.IsDisposed) {
+            $state.HistoryForm.Show()
+            $state.HistoryForm.Activate()
+            return
+        }
+
+        $historyForm = [System.Windows.Forms.Form]::new()
+        $historyForm.Text = 'Clipboard history'
+        $historyForm.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
+        $historyForm.Size = [System.Drawing.Size]::new(980, 560)
+        $historyForm.MinimumSize = [System.Drawing.Size]::new(640, 360)
+
+        $grid = [System.Windows.Forms.DataGridView]::new()
+        $grid.Dock = [System.Windows.Forms.DockStyle]::Fill
+        $grid.ReadOnly = $true
+        $grid.AllowUserToAddRows = $false
+        $grid.AllowUserToDeleteRows = $false
+        $grid.AllowUserToResizeRows = $false
+        $grid.AutoGenerateColumns = $false
+        $grid.MultiSelect = $false
+        $grid.SelectionMode = [System.Windows.Forms.DataGridViewSelectionMode]::FullRowSelect
+        $grid.RowHeadersVisible = $false
+
+        [void]$grid.Columns.Add('LastUsed', 'Last used')
+        [void]$grid.Columns.Add('Count', 'Count')
+        [void]$grid.Columns.Add('Preview', 'Preview')
+        $grid.Columns['LastUsed'].Width = 150
+        $grid.Columns['Count'].Width = 60
+        $grid.Columns['Preview'].AutoSizeMode = [System.Windows.Forms.DataGridViewAutoSizeColumnMode]::Fill
+
+        $status = [System.Windows.Forms.Label]::new()
+        $status.Dock = [System.Windows.Forms.DockStyle]::Bottom
+        $status.Height = 28
+        $status.Padding = [System.Windows.Forms.Padding]::new(8, 6, 8, 0)
+        $status.Text = 'New copies appear automatically. Select a row to copy it.'
+
+        $historyForm.Controls.Add($grid)
+        $historyForm.Controls.Add($status)
+        $state.HistoryForm = $historyForm
+        $state.Grid = $grid
+        $state.Status = $status
+
+        $grid.Add_SelectionChanged({
+            if ($state.IsRefreshing -or $state.Grid.SelectedRows.Count -eq 0) {
+                return
+            }
+
+            $content = [string]$state.Grid.SelectedRows[0].Tag
+            if ([string]::IsNullOrWhiteSpace($content)) {
+                return
+            }
+
+            Set-Clipboard -Value $content
+            Use-ClipboardHistoryItem -Content $content -Path $HistoryPath -MaxHistory $MaxHistory | Out-Null
+            $state.PreviousContent = $content
+            $state.Status.Text = 'Copied to clipboard.'
+            & $refreshHistoryGrid
+        })
+
+        $historyForm.Add_FormClosing({
+            param($sender, $eventArgs)
+            if ($eventArgs.CloseReason -eq [System.Windows.Forms.CloseReason]::UserClosing) {
+                $eventArgs.Cancel = $true
+                $sender.Hide()
+            }
+        })
+
+        $historyForm.Show()
+        & $refreshHistoryGrid
+    }
 
     $recordClipboard = {
         try {
             $content = Get-Clipboard -Raw -ErrorAction Stop
-            if ($content -is [string] -and $content -cne $previousContent) {
-                Add-ClipboardHistoryItem -Content $content -Path $HistoryPath -MaxHistory $MaxHistory -MaxContentLength $MaxContentLength | Out-Null
-                $previousContent = $content
+            if ($content -is [string] -and $content -cne $state.PreviousContent) {
+                $wasRecorded = Add-ClipboardHistoryItem -Content $content -Path $HistoryPath -MaxHistory $MaxHistory -MaxContentLength $MaxContentLength
+                $state.PreviousContent = $content
+                if ($wasRecorded) {
+                    & $refreshHistoryGrid
+                }
             }
         }
         catch {
@@ -117,10 +235,6 @@ public sealed class ClipboardHistoryHotkeyForm : Form
     $notifyIcon.Text = 'Clipboard History'
     $notifyIcon.ContextMenuStrip = $menu
 
-    $openHistory = {
-        Show-ClipboardHistoryPicker -Path $HistoryPath -MaxHistory $MaxHistory | Out-Null
-    }
-
     $timer.Interval = $IntervalMilliseconds
     $timer.Add_Tick($recordClipboard)
     $form.Add_HotkeyPressed($openHistory)
@@ -130,6 +244,7 @@ public sealed class ClipboardHistoryHotkeyForm : Form
 
     $timer.Start()
     $notifyIcon.Visible = $true
+    & $openHistory
     [System.Windows.Forms.Application]::Run($form)
 }
 finally {
