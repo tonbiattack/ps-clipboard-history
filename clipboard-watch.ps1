@@ -4,12 +4,13 @@ param(
     [ValidateRange(50, 60000)][int] $IntervalMilliseconds = 500,
     [ValidateRange(1, 2147483647)][int] $MaxHistory = 50,
     [ValidateRange(1, 2147483647)][int] $MaxContentLength = 10000,
-    [switch] $RunOnce
+    [switch] $RunOnce,
+    [string] $MutexName = 'Local\PsClipboardHistoryWatch'
 )
 
 Import-Module (Join-Path $PSScriptRoot 'ClipboardHistory.psm1') -Force
 
-$mutex = [System.Threading.Mutex]::new($false, 'Local\PsClipboardHistoryWatch')
+$mutex = [System.Threading.Mutex]::new($false, $MutexName)
 if (-not $mutex.WaitOne(0, $false)) {
     Write-Host 'clipboard-watch.ps1 is already running.'
     exit 1

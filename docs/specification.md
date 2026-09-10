@@ -27,6 +27,7 @@ Windows標準のクリップボード履歴を補助するため、PowerShellの
 ```text
 ps-clipboard-history/
 ├─ clipboard-watch.ps1
+├─ clipboard-watch.vbs
 ├─ clipboard-select.ps1
 ├─ install-shortcut.ps1
 └─ history.json
@@ -42,7 +43,11 @@ ps-clipboard-history/
 
 ### install-shortcut.ps1
 
-`clipboard-select.ps1` を簡単に起動するためのWindowsショートカットを作成する。
+`clipboard-select.ps1` を簡単に起動するためのWindowsショートカットと、ログイン時に監視を開始するスタートアップショートカットを作成する。
+
+### clipboard-watch.vbs
+
+`clipboard-watch.ps1` をコンソールウィンドウなしで常駐起動するランチャー。
 
 管理者権限を要求せず、現在ユーザーのみを対象とする。
 
@@ -213,12 +218,12 @@ MutexまたはPIDファイルを利用する。
 
 利用者が毎回PowerShellを開き、`.ps1` ファイルを直接指定して実行する運用は避ける。
 
-推奨する利用方法は、Windowsショートカット経由で `clipboard-select.ps1` を起動する方式とする。
+推奨する利用方法は、Windowsショートカット経由で `clipboard-select.ps1` を起動する方式とする。GUI を利用できる環境では PowerShell のコンソールを非表示で起動する。
 
 ショートカットの実行対象は以下のような形式とする。
 
 ```text
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<配置先>\clipboard-select.ps1"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "<配置先>\clipboard-select.ps1"
 ```
 
 `-NoProfile` を指定し、利用者のPowerShellプロファイルによる動作差を減らす。
@@ -234,7 +239,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<配置先>\clipboard-s
 - デスクトップ
 - スタートメニュー
 
-初期実装ではデスクトップを標準とする。
+初期実装ではデスクトップを標準とする。加えて、現在ユーザーのスタートアップフォルダへ監視用ショートカットを作成する。監視用ショートカットは `wscript.exe` から `clipboard-watch.vbs` を実行するため、コピー時を含めて PowerShell の黒いコンソールウィンドウを表示しない。
 
 ショートカット名は以下とする。
 
@@ -295,16 +300,9 @@ Set-Clipboard
 
 ## 18. 監視スクリプトの起動
 
-`clipboard-watch.ps1` は履歴を記録するため継続実行が必要となる。
+`clipboard-watch.ps1` は履歴を記録するため継続実行が必要となる。通常は `clipboard-watch.vbs` を `wscript.exe` から実行し、コンソールを表示しない。
 
-v1では以下の2方式を検討対象とする。
-
-1. スタートアップフォルダにショートカットを配置してログイン時に自動起動する
-2. 利用者が必要なときだけ監視を開始する
-
-自動起動を採用する場合も、Windowsタスクスケジューラへの管理者権限付き登録は必須としない。
-
-会社PCでの導入容易性を優先し、現在ユーザーのスタートアップフォルダへのショートカット配置を第一候補とする。
+現在ユーザーのスタートアップフォルダにショートカットを配置してログイン時に自動起動する。Windowsタスクスケジューラへの管理者権限付き登録は必要としない。
 
 アンインストール時は作成したショートカットのみ削除し、OS設定そのものは変更しない。
 
