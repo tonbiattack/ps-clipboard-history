@@ -9,7 +9,7 @@ Windows のテキストクリップボードをローカル JSON に保存し、
 
 ## 使い方
 
-監視はコンソールを表示しない起動ランチャー経由で開始します。既定では 500ms ごとに確認し、`%LOCALAPPDATA%\clipboard-history\history.json` に最大 50 件を保存します。
+監視は通知領域（タスクバー右端）にアイコンを置く常駐アプリとして動作します。コンソールを表示せず、既定では 500ms ごとに確認し、`%LOCALAPPDATA%\clipboard-history\history.json` に最大 50 件を保存します。
 
 ```powershell
 wscript.exe .\clipboard-watch.vbs
@@ -21,9 +21,9 @@ wscript.exe .\clipboard-watch.vbs
 .\install-shortcut.ps1
 ```
 
-作成される **Clipboard History** ショートカットは `clipboard-select.ps1` を、PowerShell の黒いコンソールを表示せずに起動します。同時に、ログイン時に監視を開始する **Clipboard History Watcher** ショートカットを現在ユーザーのスタートアップフォルダへ作成します。どちらも `-NoProfile` とプロセス限定の `-ExecutionPolicy Bypass` を使用し、システム全体の実行ポリシーは変更しません。既存の同名ショートカットを置き換える場合は `-Force` を付けてください。
+作成される **Clipboard History** ショートカットは履歴一覧を開きます。同時に、ログイン時に常駐アプリを起動する **Clipboard History Watcher** ショートカットを現在ユーザーのスタートアップフォルダへ作成します。どちらも `-NoProfile` とプロセス限定の `-ExecutionPolicy Bypass` を使用し、システム全体の実行ポリシーは変更しません。既存の同名ショートカットを置き換える場合は `-Force` を付けてください。
 
-監視の起動後は `Ctrl + Alt + V` で履歴一覧を開けます。常駐プロセスが一覧を直接表示するため、キーを押すたびに別の PowerShell を起動せず、黒い画面も表示しません。`Win + V` は変更せず、Windows 標準のクリップボード履歴として併用します。
+通知領域の **Clipboard History** アイコンは、ダブルクリックまたは右クリック→「Open history」で一覧を開けます。右クリック→「Exit」で常駐を終了できます。`Ctrl + Alt + V` も補助として使えます。常駐プロセスが一覧を直接表示するため、黒い画面は表示しません。`Win + V` は変更せず、Windows 標準のクリップボード履歴として併用します。
 
 `Out-GridView` が使える環境では一覧ウィンドウを開きます。使えない環境では番号入力に切り替わります。必要であれば直接起動もできます。
 
