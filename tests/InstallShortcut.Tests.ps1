@@ -5,7 +5,7 @@ Describe 'install-shortcut.ps1' {
         $script:watcherShortcutDirectory = Join-Path $TestDrive 'startup'
     }
 
-    It 'creates desktop and startup shortcuts without a StartMenu option' {
+    It 'creates desktop and startup shortcuts that open the resident app' {
         & $installScript -ShortcutDirectory $shortcutDirectory -WatcherShortcutDirectory $watcherShortcutDirectory
 
         $shortcutPath = Join-Path $shortcutDirectory 'Clipboard History.lnk'
@@ -13,11 +13,8 @@ Describe 'install-shortcut.ps1' {
 
         $shell = New-Object -ComObject WScript.Shell
         $shortcut = $shell.CreateShortcut($shortcutPath)
-        $shortcut.Arguments | Should -Match 'clipboard-select\.ps1'
-        $shortcut.Arguments | Should -Match '-NoProfile'
-        $shortcut.Arguments | Should -Match '-ExecutionPolicy Bypass'
-        $shortcut.Arguments | Should -Match '-WindowStyle Hidden'
-        $shortcut.Hotkey | Should -Match '^(Alt\+Ctrl|Ctrl\+Alt)\+V$'
+        $shortcut.TargetPath | Should -Match 'wscript\.exe$'
+        $shortcut.Arguments | Should -Match 'clipboard-watch\.vbs'
 
         $watcherShortcutPath = Join-Path $watcherShortcutDirectory 'Clipboard History Watcher.lnk'
         Test-Path -LiteralPath $watcherShortcutPath | Should -BeTrue
