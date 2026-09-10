@@ -24,6 +24,7 @@ try {
         HistoryForm     = $null
         Grid            = $null
         Status          = $null
+        CopyHistoryRow  = $null
     }
 
     $refreshHistoryGrid = {
@@ -103,13 +104,14 @@ try {
         $state.Grid = $grid
         $state.Status = $status
 
-        $grid.Add_CellClick({
-            param($sender, $eventArgs)
-            if ($state.IsRefreshing -or $eventArgs.RowIndex -lt 0) {
+        $state.CopyHistoryRow = {
+            param([int] $RowIndex)
+
+            if ($state.IsRefreshing -or $RowIndex -lt 0) {
                 return
             }
 
-            $content = [string]$state.Grid.Rows[$eventArgs.RowIndex].Tag
+            $content = [string]$state.Grid.Rows[$RowIndex].Tag
             if ([string]::IsNullOrWhiteSpace($content)) {
                 return
             }
@@ -117,8 +119,23 @@ try {
             Set-Clipboard -Value $content
             Use-ClipboardHistoryItem -Content $content -Path $HistoryPath -MaxHistory $MaxHistory | Out-Null
             $state.PreviousContent = $content
-            $state.Status.Text = 'Copied to clipboard. Arrow keys only change selection.'
+            $state.Status.Text = 'Copied to clipboard. Use arrows to select, then Enter to copy.'
             & $refreshHistoryGrid
+        }
+
+        $grid.Add_CellClick({
+            param($sender, $eventArgs)
+            & $state.CopyHistoryRow $eventArgs.RowIndex
+        })
+
+        $grid.Add_KeyDown({
+            param($sender, $eventArgs)
+            if ($eventArgs.KeyCode -ne [System.Windows.Forms.Keys]::Enter -or $state.Grid.SelectedRows.Count -eq 0) {
+                return
+            }
+
+            $eventArgs.SuppressKeyPress = $true
+            & $state.CopyHistoryRow $state.Grid.SelectedRows[0].Index
         })
 
         $historyForm.Add_FormClosing({
