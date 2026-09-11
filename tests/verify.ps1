@@ -59,6 +59,8 @@ Assert-That ($watcherSource -notmatch 'Add_SelectionChanged') 'arrow-key selecti
 Assert-That ($watcherSource -match '\$state\.HistoryForm\.Hide\(\)') 'history window hides after copying a row'
 Assert-That ($watcherSource -match 'ShowInForeground') 'hotkey foreground helper exists'
 Assert-That ($watcherSource -match 'SetForegroundWindow') 'hotkey uses the Windows foreground API'
+Assert-That ($watcherSource -match "Font\]::new\('Segoe UI', 12") 'history UI uses a readable 12pt font'
+Assert-That ($watcherSource -match 'RowTemplate.Height = 32') 'history UI uses readable row height'
 Assert-That ($watcherSource -notmatch "Columns\.Add\('Count'") 'count column is absent'
 
 $shortcutDirectory = Join-Path $testRoot 'desktop'
