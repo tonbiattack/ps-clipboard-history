@@ -138,10 +138,10 @@ lastUsedAt DESC
 表示例:
 
 ```text
-LastUsed             Preview
-2026/09/11 00:15     git rebase origin/main
-2026/09/11 00:10     SELECT * FROM users...
-2026/09/11 00:03     npm run build
+No.  LastUsed             Preview
+1    2026/09/11 00:15     git rebase origin/main
+2    2026/09/11 00:10     SELECT * FROM users...
+3    2026/09/11 00:03     npm run build
 ```
 
 選択した項目を `Set-Clipboard` で現在のクリップボードへ戻す。
