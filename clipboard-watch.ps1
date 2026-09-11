@@ -5,8 +5,7 @@ param(
     [ValidateRange(1, 2147483647)][int] $MaxHistory = 500,
     [ValidateRange(1, 2147483647)][int] $MaxContentLength = 10000,
     [switch] $RunOnce,
-    [string] $MutexName = 'Local\PsClipboardHistoryWatch',
-    [switch] $DisableHotkey
+    [string] $MutexName = 'Local\PsClipboardHistoryWatch'
 )
 
 Import-Module (Join-Path $PSScriptRoot 'ClipboardHistory.psm1') -Force
@@ -18,6 +17,11 @@ if (-not $mutex.WaitOne(0, $false)) {
 }
 
 try {
+    $applicationContext = $null
+    $notifyIcon = $null
+    $menu = $null
+    $timer = $null
+
     $state = [pscustomobject]@{
         PreviousContent = $null
         IsRefreshing    = $false
@@ -86,7 +90,12 @@ try {
 
     $openHistory = {
         if ($null -ne $state.HistoryForm -and -not $state.HistoryForm.IsDisposed) {
-            [ClipboardHistoryHotkeyForm]::ShowInForeground($state.HistoryForm)
+            if ($state.HistoryForm.WindowState -eq [System.Windows.Forms.FormWindowState]::Minimized) {
+                $state.HistoryForm.WindowState = [System.Windows.Forms.FormWindowState]::Normal
+            }
+            $state.HistoryForm.Show()
+            $state.HistoryForm.Activate()
+            $state.HistoryForm.BringToFront()
             if ($null -ne $state.SearchBox) {
                 $state.SearchBox.Focus()
                 $state.SearchBox.SelectAll()
@@ -229,135 +238,7 @@ try {
         return
     }
 
-    if ($DisableHotkey) {
-        while ($true) {
-            Start-Sleep -Milliseconds $IntervalMilliseconds
-            & $recordClipboard
-        }
-    }
-
-    if (-not ('ClipboardHistoryHotkeyForm' -as [type])) {
-        Add-Type -ReferencedAssemblies System.Windows.Forms, System.Drawing -TypeDefinition @'
-using System;
-using System.Drawing;
-using System.Runtime.InteropServices;
-using System.Windows.Forms;
-
-public sealed class ClipboardHistoryHotkeyForm : Form
-{
-    private const int WM_HOTKEY = 0x0312;
-    private const int HotkeyId = 0x4348;
-    private const uint ModAlt = 0x0001;
-    private const uint ModControl = 0x0002;
-    private const uint VirtualKeyV = 0x56;
-
-    [DllImport("user32.dll")]
-    private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
-
-    [DllImport("user32.dll")]
-    private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
-
-    [DllImport("user32.dll")]
-    private static extern bool SetForegroundWindow(IntPtr hWnd);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr GetForegroundWindow();
-
-    [DllImport("user32.dll")]
-    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr processId);
-
-    [DllImport("user32.dll")]
-    private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
-
-    [DllImport("user32.dll")]
-    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-
-    [DllImport("user32.dll")]
-    private static extern bool BringWindowToTop(IntPtr hWnd);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr SetFocus(IntPtr hWnd);
-
-    [DllImport("kernel32.dll")]
-    private static extern uint GetCurrentThreadId();
-
-    public event EventHandler HotkeyPressed;
-    public bool IsHotkeyRegistered { get; private set; }
-
-    public ClipboardHistoryHotkeyForm()
-    {
-        ShowInTaskbar = false;
-        FormBorderStyle = FormBorderStyle.None;
-        StartPosition = FormStartPosition.Manual;
-        Location = new Point(-2000, -2000);
-        Size = new Size(1, 1);
-    }
-
-    public static void ShowInForeground(Form window)
-    {
-        IntPtr foregroundWindow = GetForegroundWindow();
-        uint currentThread = GetCurrentThreadId();
-        uint foregroundThread = foregroundWindow == IntPtr.Zero
-            ? 0
-            : GetWindowThreadProcessId(foregroundWindow, IntPtr.Zero);
-        bool attached = foregroundThread != 0 && foregroundThread != currentThread
-            && AttachThreadInput(currentThread, foregroundThread, true);
-
-        try
-        {
-            if (window.WindowState == FormWindowState.Minimized)
-            {
-                window.WindowState = FormWindowState.Normal;
-            }
-
-            window.Show();
-            ShowWindow(window.Handle, 9); // SW_RESTORE
-            window.TopMost = true;
-            window.Activate();
-            window.BringToFront();
-            BringWindowToTop(window.Handle);
-            SetForegroundWindow(window.Handle);
-            SetFocus(window.Handle);
-            window.TopMost = false;
-        }
-        finally
-        {
-            if (attached)
-            {
-                AttachThreadInput(currentThread, foregroundThread, false);
-            }
-        }
-    }
-
-    protected override void OnHandleCreated(EventArgs e)
-    {
-        base.OnHandleCreated(e);
-        IsHotkeyRegistered = RegisterHotKey(Handle, HotkeyId, ModControl | ModAlt, VirtualKeyV);
-    }
-
-    protected override void WndProc(ref Message m)
-    {
-        if (m.Msg == WM_HOTKEY && m.WParam.ToInt32() == HotkeyId && HotkeyPressed != null)
-        {
-            HotkeyPressed(this, EventArgs.Empty);
-        }
-        base.WndProc(ref m);
-    }
-
-    protected override void Dispose(bool disposing)
-    {
-        if (IsHandleCreated && IsHotkeyRegistered)
-        {
-            UnregisterHotKey(Handle, HotkeyId);
-            IsHotkeyRegistered = false;
-        }
-        base.Dispose(disposing);
-    }
-}
-'@
-    }
-
-    $form = [ClipboardHistoryHotkeyForm]::new()
+    $applicationContext = [System.Windows.Forms.ApplicationContext]::new()
     $timer = [System.Windows.Forms.Timer]::new()
     $menu = [System.Windows.Forms.ContextMenuStrip]::new()
     $openMenuItem = $menu.Items.Add('Open history')
@@ -369,15 +250,14 @@ public sealed class ClipboardHistoryHotkeyForm : Form
 
     $timer.Interval = $IntervalMilliseconds
     $timer.Add_Tick($recordClipboard)
-    $form.Add_HotkeyPressed($openHistory)
     $openMenuItem.Add_Click($openHistory)
     $notifyIcon.Add_DoubleClick($openHistory)
-    $exitMenuItem.Add_Click({ $form.Close() })
+    $exitMenuItem.Add_Click({ $applicationContext.ExitThread() })
 
     $timer.Start()
     $notifyIcon.Visible = $true
     & $openHistory
-    [System.Windows.Forms.Application]::Run($form)
+    [System.Windows.Forms.Application]::Run($applicationContext)
 }
 finally {
     if ($null -ne $notifyIcon) {
@@ -390,8 +270,8 @@ finally {
     if ($null -ne $timer) {
         $timer.Dispose()
     }
-    if ($null -ne $form) {
-        $form.Dispose()
+    if ($null -ne $applicationContext) {
+        $applicationContext.Dispose()
     }
     $mutex.ReleaseMutex() | Out-Null
     $mutex.Dispose()
