@@ -30,12 +30,15 @@ try {
         SearchBox       = $null
         Status          = $null
         CopyHistoryRow  = $null
+        NumberPrefix    = ''
+        NumberInputAt   = [datetime]::MinValue
     }
 
     $refreshHistoryGrid = {
         if ($null -eq $state.Grid -or $state.HistoryForm.IsDisposed) {
             return
         }
+        $state.NumberPrefix = ''
 
         $selectedContent = $null
         if ($state.Grid.SelectedRows.Count -gt 0) {
@@ -59,7 +62,9 @@ try {
 
             $selectedRow = $null
             foreach ($item in $items) {
+                $displayNumber = $state.Grid.Rows.Count + 1
                 $rowIndex = $state.Grid.Rows.Add(
+                    $displayNumber,
                     ([datetime]$item.lastUsedAt).ToString('yyyy/MM/dd HH:mm:ss'),
                     (Get-ClipboardHistoryPreview -Content ([string]$item.content))
                 )
@@ -108,6 +113,7 @@ try {
         $historyForm.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
         $historyForm.Size = [System.Drawing.Size]::new(1100, 650)
         $historyForm.MinimumSize = [System.Drawing.Size]::new(760, 450)
+        $historyForm.KeyPreview = $true
 
         $uiFont = [System.Drawing.Font]::new('Segoe UI', 12)
         $headerFont = [System.Drawing.Font]::new('Segoe UI', 12, [System.Drawing.FontStyle]::Bold)
@@ -117,6 +123,7 @@ try {
         $searchBox.Font = $uiFont
         $searchBox.Height = 36
         $searchBox.Margin = [System.Windows.Forms.Padding]::new(8)
+        $searchBox.Visible = $false
 
         $grid = [System.Windows.Forms.DataGridView]::new()
         $grid.Dock = [System.Windows.Forms.DockStyle]::Fill
@@ -134,8 +141,10 @@ try {
         $grid.RowTemplate.Height = 32
         $grid.DefaultCellStyle.Padding = [System.Windows.Forms.Padding]::new(4, 2, 4, 2)
 
+        [void]$grid.Columns.Add('Number', 'No.')
         [void]$grid.Columns.Add('LastUsed', 'Last used')
         [void]$grid.Columns.Add('Preview', 'Preview')
+        $grid.Columns['Number'].Width = 56
         $grid.Columns['LastUsed'].Width = 150
         $grid.Columns['Preview'].AutoSizeMode = [System.Windows.Forms.DataGridViewAutoSizeColumnMode]::Fill
 
@@ -144,7 +153,7 @@ try {
         $status.Font = [System.Drawing.Font]::new('Segoe UI', 11)
         $status.Height = 34
         $status.Padding = [System.Windows.Forms.Padding]::new(10, 7, 10, 0)
-        $status.Text = 'New copies appear automatically. Type to search the history.'
+        $status.Text = 'Type a number to select, then press Enter to copy. Ctrl+F searches.'
 
         $historyForm.Controls.Add($grid)
         $historyForm.Controls.Add($searchBox)
@@ -169,6 +178,7 @@ try {
             Set-Clipboard -Value $content
             Use-ClipboardHistoryItem -Content $content -Path $HistoryPath -MaxHistory $MaxHistory | Out-Null
             $state.PreviousContent = $content
+            $state.NumberPrefix = ''
             & $refreshHistoryGrid
             $state.Status.Text = 'Copied to clipboard.'
         }
@@ -185,6 +195,63 @@ try {
                 $eventArgs.SuppressKeyPress = $true
                 $state.Grid.Focus()
                 $state.Grid.Rows[0].Selected = $true
+            }
+            elseif ($eventArgs.KeyCode -eq [System.Windows.Forms.Keys]::Escape) {
+                $eventArgs.SuppressKeyPress = $true
+                $sender.Clear()
+                $sender.Visible = $false
+                $state.Grid.Focus()
+            }
+        })
+
+        $historyForm.Add_KeyDown({
+            param($sender, $eventArgs)
+
+            if ($eventArgs.Control -and $eventArgs.KeyCode -eq [System.Windows.Forms.Keys]::F) {
+                $eventArgs.SuppressKeyPress = $true
+                $state.SearchBox.Visible = $true
+                $state.SearchBox.Focus()
+                $state.SearchBox.SelectAll()
+                return
+            }
+
+            if ($state.SearchBox.Focused) {
+                return
+            }
+
+            $digit = $null
+            $keyCode = [int]$eventArgs.KeyCode
+            if ($keyCode -ge [int][System.Windows.Forms.Keys]::D0 -and $keyCode -le [int][System.Windows.Forms.Keys]::D9) {
+                $digit = $keyCode - [int][System.Windows.Forms.Keys]::D0
+            }
+            elseif ($keyCode -ge [int][System.Windows.Forms.Keys]::NumPad0 -and $keyCode -le [int][System.Windows.Forms.Keys]::NumPad9) {
+                $digit = $keyCode - [int][System.Windows.Forms.Keys]::NumPad0
+            }
+
+            if ($null -eq $digit) {
+                if ($eventArgs.KeyCode -eq [System.Windows.Forms.Keys]::Escape) {
+                    $state.NumberPrefix = ''
+                }
+                return
+            }
+
+            $eventArgs.SuppressKeyPress = $true
+            if (((Get-Date) - $state.NumberInputAt).TotalMilliseconds -gt 1200) {
+                $state.NumberPrefix = ''
+            }
+            $state.NumberInputAt = Get-Date
+            $state.NumberPrefix += [string]$digit
+            $selectedIndex = [int]$state.NumberPrefix - 1
+            if ($selectedIndex -ge 0 -and $selectedIndex -lt $state.Grid.Rows.Count) {
+                $state.Grid.ClearSelection()
+                $row = $state.Grid.Rows[$selectedIndex]
+                $row.Selected = $true
+                $state.Grid.CurrentCell = $row.Cells['Preview']
+                $state.Grid.FirstDisplayedScrollingRowIndex = $selectedIndex
+                $state.Status.Text = ('No. {0} selected. Press Enter to copy.' -f $state.NumberPrefix)
+            }
+            else {
+                $state.Status.Text = ('No. {0} was not found.' -f $state.NumberPrefix)
             }
         })
 
@@ -213,7 +280,7 @@ try {
 
         $historyForm.Show()
         & $refreshHistoryGrid
-        $searchBox.Focus()
+        $grid.Focus()
     }
 
     $recordClipboard = {
