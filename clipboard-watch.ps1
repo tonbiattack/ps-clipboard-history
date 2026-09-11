@@ -2,7 +2,7 @@
 param(
     [string] $HistoryPath,
     [ValidateRange(50, 60000)][int] $IntervalMilliseconds = 500,
-    [ValidateRange(1, 2147483647)][int] $MaxHistory = 50,
+    [ValidateRange(1, 2147483647)][int] $MaxHistory = 500,
     [ValidateRange(1, 2147483647)][int] $MaxContentLength = 10000,
     [switch] $RunOnce,
     [string] $MutexName = 'Local\PsClipboardHistoryWatch',

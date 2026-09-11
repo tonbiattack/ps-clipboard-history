@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [string] $HistoryPath,
-    [ValidateRange(1, 2147483647)][int] $MaxHistory = 50
+    [ValidateRange(1, 2147483647)][int] $MaxHistory = 500
 )
 
 Import-Module (Join-Path $PSScriptRoot 'ClipboardHistory.psm1') -Force
