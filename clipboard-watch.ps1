@@ -161,7 +161,7 @@ try {
             Use-ClipboardHistoryItem -Content $content -Path $HistoryPath -MaxHistory $MaxHistory | Out-Null
             $state.PreviousContent = $content
             & $refreshHistoryGrid
-            $state.HistoryForm.Hide()
+            $state.Status.Text = 'Copied to clipboard.'
         }
 
         $searchBox.Add_TextChanged({
@@ -260,6 +260,27 @@ public sealed class ClipboardHistoryHotkeyForm : Form
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr processId);
+
+    [DllImport("user32.dll")]
+    private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    [DllImport("user32.dll")]
+    private static extern bool BringWindowToTop(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SetFocus(IntPtr hWnd);
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+
     public event EventHandler HotkeyPressed;
     public bool IsHotkeyRegistered { get; private set; }
 
@@ -274,16 +295,38 @@ public sealed class ClipboardHistoryHotkeyForm : Form
 
     public static void ShowInForeground(Form window)
     {
-        if (window.WindowState == FormWindowState.Minimized)
+        IntPtr foregroundWindow = GetForegroundWindow();
+        uint currentThread = GetCurrentThreadId();
+        uint foregroundThread = foregroundWindow == IntPtr.Zero
+            ? 0
+            : GetWindowThreadProcessId(foregroundWindow, IntPtr.Zero);
+        bool attached = foregroundThread != 0 && foregroundThread != currentThread
+            && AttachThreadInput(currentThread, foregroundThread, true);
+
+        try
         {
-            window.WindowState = FormWindowState.Normal;
+            if (window.WindowState == FormWindowState.Minimized)
+            {
+                window.WindowState = FormWindowState.Normal;
+            }
+
+            window.Show();
+            ShowWindow(window.Handle, 9); // SW_RESTORE
+            window.TopMost = true;
+            window.Activate();
+            window.BringToFront();
+            BringWindowToTop(window.Handle);
+            SetForegroundWindow(window.Handle);
+            SetFocus(window.Handle);
+            window.TopMost = false;
         }
-        window.Show();
-        window.TopMost = true;
-        window.Activate();
-        window.BringToFront();
-        SetForegroundWindow(window.Handle);
-        window.TopMost = false;
+        finally
+        {
+            if (attached)
+            {
+                AttachThreadInput(currentThread, foregroundThread, false);
+            }
+        }
     }
 
     protected override void OnHandleCreated(EventArgs e)
