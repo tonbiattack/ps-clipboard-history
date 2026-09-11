@@ -57,6 +57,8 @@ Assert-That ($watcherSource -match 'Add_KeyDown') 'keyboard handler exists'
 Assert-That ($watcherSource -match 'Keys\]::Enter') 'Enter copies the selected row'
 Assert-That ($watcherSource -notmatch 'Add_SelectionChanged') 'arrow-key selection does not copy'
 Assert-That ($watcherSource -match '\$state\.HistoryForm\.Hide\(\)') 'history window hides after copying a row'
+Assert-That ($watcherSource -match 'ShowInForeground') 'hotkey foreground helper exists'
+Assert-That ($watcherSource -match 'SetForegroundWindow') 'hotkey uses the Windows foreground API'
 Assert-That ($watcherSource -notmatch "Columns\.Add\('Count'") 'count column is absent'
 
 $shortcutDirectory = Join-Path $testRoot 'desktop'

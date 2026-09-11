@@ -86,8 +86,7 @@ try {
 
     $openHistory = {
         if ($null -ne $state.HistoryForm -and -not $state.HistoryForm.IsDisposed) {
-            $state.HistoryForm.Show()
-            $state.HistoryForm.Activate()
+            [ClipboardHistoryHotkeyForm]::ShowInForeground($state.HistoryForm)
             if ($null -ne $state.SearchBox) {
                 $state.SearchBox.Focus()
                 $state.SearchBox.SelectAll()
@@ -248,6 +247,9 @@ public sealed class ClipboardHistoryHotkeyForm : Form
     [DllImport("user32.dll")]
     private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
     public event EventHandler HotkeyPressed;
     public bool IsHotkeyRegistered { get; private set; }
 
@@ -258,6 +260,20 @@ public sealed class ClipboardHistoryHotkeyForm : Form
         StartPosition = FormStartPosition.Manual;
         Location = new Point(-2000, -2000);
         Size = new Size(1, 1);
+    }
+
+    public static void ShowInForeground(Form window)
+    {
+        if (window.WindowState == FormWindowState.Minimized)
+        {
+            window.WindowState = FormWindowState.Normal;
+        }
+        window.Show();
+        window.TopMost = true;
+        window.Activate();
+        window.BringToFront();
+        SetForegroundWindow(window.Handle);
+        window.TopMost = false;
     }
 
     protected override void OnHandleCreated(EventArgs e)
