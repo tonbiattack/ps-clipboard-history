@@ -230,7 +230,10 @@ try {
 
             if ($null -eq $digit) {
                 if ($eventArgs.KeyCode -eq [System.Windows.Forms.Keys]::Escape) {
+                    $eventArgs.SuppressKeyPress = $true
                     $state.NumberPrefix = ''
+                    $state.NumberInputAt = [datetime]::MinValue
+                    $state.Status.Text = 'Number selection cleared.'
                 }
                 return
             }
@@ -241,7 +244,13 @@ try {
             }
             $state.NumberInputAt = Get-Date
             $state.NumberPrefix += [string]$digit
-            $selectedIndex = [int]$state.NumberPrefix - 1
+            $selectedNumber = 0
+            if (-not [int]::TryParse($state.NumberPrefix, [ref]$selectedNumber)) {
+                $state.Status.Text = ('No. {0} was not found. Press Escape to clear it.' -f $state.NumberPrefix)
+                return
+            }
+
+            $selectedIndex = $selectedNumber - 1
             if ($selectedIndex -ge 0 -and $selectedIndex -lt $state.Grid.Rows.Count) {
                 $state.Grid.ClearSelection()
                 $row = $state.Grid.Rows[$selectedIndex]
