@@ -45,10 +45,15 @@ Add-ClipboardHistoryItem -Content 'third' -Path $historyPath -MaxHistory 2 | Out
 Assert-That (@(Get-ClipboardHistory -Path $historyPath).Count -eq 2) 'max history is enforced'
 
 $watcherSource = Get-Content -Raw -LiteralPath $watcherPath
+Assert-That ($watcherSource -match 'SearchBox') 'search box state exists'
+Assert-That ($watcherSource -match 'Add_TextChanged') 'search refresh handler exists'
+Assert-That ($watcherSource -match 'OrdinalIgnoreCase') 'search is case-insensitive'
+Assert-That ($watcherSource -match 'IndexOf\(\$query') 'search filters clipboard content'
 Assert-That ($watcherSource -match 'Add_CellClick') 'mouse row-click copy handler exists'
 Assert-That ($watcherSource -match 'Add_KeyDown') 'keyboard handler exists'
 Assert-That ($watcherSource -match 'Keys\]::Enter') 'Enter copies the selected row'
 Assert-That ($watcherSource -notmatch 'Add_SelectionChanged') 'arrow-key selection does not copy'
+Assert-That ($watcherSource -match '\$state\.HistoryForm\.Hide\(\)') 'history window hides after copying a row'
 Assert-That ($watcherSource -notmatch "Columns\.Add\('Count'") 'count column is absent'
 
 $shortcutDirectory = Join-Path $testRoot 'desktop'

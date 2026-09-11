@@ -23,6 +23,7 @@ try {
         IsRefreshing    = $false
         HistoryForm     = $null
         Grid            = $null
+        SearchBox       = $null
         Status          = $null
         CopyHistoryRow  = $null
     }
@@ -37,10 +38,21 @@ try {
             $selectedContent = [string]$state.Grid.SelectedRows[0].Tag
         }
 
+        $query = ''
+        if ($null -ne $state.SearchBox) {
+            $query = [string]$state.SearchBox.Text
+        }
+
         $state.IsRefreshing = $true
         try {
             $state.Grid.Rows.Clear()
             $items = @(Get-ClipboardHistory -Path $HistoryPath)
+            if (-not [string]::IsNullOrWhiteSpace($query)) {
+                $items = @($items | Where-Object {
+                    ([string]$_.content).IndexOf($query, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+                })
+            }
+
             $selectedRow = $null
             foreach ($item in $items) {
                 $rowIndex = $state.Grid.Rows.Add(
@@ -57,6 +69,15 @@ try {
             if ($null -ne $selectedRow) {
                 $selectedRow.Selected = $true
             }
+
+            if ($null -ne $state.Status) {
+                if ([string]::IsNullOrWhiteSpace($query)) {
+                    $state.Status.Text = ('{0} item(s). Select a row to copy it.' -f $items.Count)
+                }
+                else {
+                    $state.Status.Text = ('{0} item(s) matched "{1}".' -f $items.Count, $query)
+                }
+            }
         }
         finally {
             $state.IsRefreshing = $false
@@ -67,6 +88,10 @@ try {
         if ($null -ne $state.HistoryForm -and -not $state.HistoryForm.IsDisposed) {
             $state.HistoryForm.Show()
             $state.HistoryForm.Activate()
+            if ($null -ne $state.SearchBox) {
+                $state.SearchBox.Focus()
+                $state.SearchBox.SelectAll()
+            }
             return
         }
 
@@ -75,6 +100,11 @@ try {
         $historyForm.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
         $historyForm.Size = [System.Drawing.Size]::new(980, 560)
         $historyForm.MinimumSize = [System.Drawing.Size]::new(640, 360)
+
+        $searchBox = [System.Windows.Forms.TextBox]::new()
+        $searchBox.Dock = [System.Windows.Forms.DockStyle]::Top
+        $searchBox.Height = 28
+        $searchBox.Margin = [System.Windows.Forms.Padding]::new(8)
 
         $grid = [System.Windows.Forms.DataGridView]::new()
         $grid.Dock = [System.Windows.Forms.DockStyle]::Fill
@@ -96,12 +126,14 @@ try {
         $status.Dock = [System.Windows.Forms.DockStyle]::Bottom
         $status.Height = 28
         $status.Padding = [System.Windows.Forms.Padding]::new(8, 6, 8, 0)
-        $status.Text = 'New copies appear automatically. Select a row to copy it.'
+        $status.Text = 'New copies appear automatically. Type to search the history.'
 
         $historyForm.Controls.Add($grid)
+        $historyForm.Controls.Add($searchBox)
         $historyForm.Controls.Add($status)
         $state.HistoryForm = $historyForm
         $state.Grid = $grid
+        $state.SearchBox = $searchBox
         $state.Status = $status
 
         $state.CopyHistoryRow = {
@@ -119,9 +151,24 @@ try {
             Set-Clipboard -Value $content
             Use-ClipboardHistoryItem -Content $content -Path $HistoryPath -MaxHistory $MaxHistory | Out-Null
             $state.PreviousContent = $content
-            $state.Status.Text = 'Copied to clipboard. Use arrows to select, then Enter to copy.'
             & $refreshHistoryGrid
+            $state.HistoryForm.Hide()
         }
+
+        $searchBox.Add_TextChanged({
+            if (-not $state.IsRefreshing) {
+                & $refreshHistoryGrid
+            }
+        })
+
+        $searchBox.Add_KeyDown({
+            param($sender, $eventArgs)
+            if ($eventArgs.KeyCode -eq [System.Windows.Forms.Keys]::Down -and $state.Grid.Rows.Count -gt 0) {
+                $eventArgs.SuppressKeyPress = $true
+                $state.Grid.Focus()
+                $state.Grid.Rows[0].Selected = $true
+            }
+        })
 
         $grid.Add_CellClick({
             param($sender, $eventArgs)
@@ -148,6 +195,7 @@ try {
 
         $historyForm.Show()
         & $refreshHistoryGrid
+        $searchBox.Focus()
     }
 
     $recordClipboard = {
