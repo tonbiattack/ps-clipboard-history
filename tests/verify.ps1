@@ -25,6 +25,9 @@ $historyPath = Join-Path $testRoot 'history.json'
 New-Item -ItemType Directory -Path $testRoot -Force | Out-Null
 Import-Module $modulePath -Force
 
+$moduleSource = Get-Content -Raw -LiteralPath $modulePath
+Assert-That ($moduleSource -match '\$script:DefaultMaxHistory = 500') 'default history retention is 500'
+
 Add-ClipboardHistoryItem -Content 'first' -Path $historyPath | Out-Null
 Start-Sleep -Milliseconds 5
 Add-ClipboardHistoryItem -Content 'second' -Path $historyPath | Out-Null

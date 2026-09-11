@@ -1,6 +1,6 @@
 Set-StrictMode -Version Latest
 
-$script:DefaultMaxHistory = 50
+$script:DefaultMaxHistory = 500
 $script:DefaultMaxContentLength = 10000
 
 function Get-ClipboardHistoryPath {
@@ -150,7 +150,7 @@ function Show-ClipboardHistoryPicker {
     [CmdletBinding()]
     param(
         [string] $Path,
-        [ValidateRange(1, 2147483647)][int] $MaxHistory = 50
+        [ValidateRange(1, 2147483647)][int] $MaxHistory = $script:DefaultMaxHistory
     )
 
     $items = @(Get-ClipboardHistory -Path $Path)

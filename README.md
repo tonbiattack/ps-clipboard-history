@@ -9,7 +9,7 @@ Windows のテキストクリップボードをローカル JSON に保存し、
 
 ## 使い方
 
-監視は通知領域（タスクバー右端）にアイコンを置く常駐アプリとして動作します。コンソールを表示せず、既定では 500ms ごとに確認し、`%LOCALAPPDATA%\clipboard-history\history.json` に最大 50 件を保存します。
+監視は通知領域（タスクバー右端）にアイコンを置く常駐アプリとして動作します。コンソールを表示せず、既定では 500ms ごとに確認し、`%LOCALAPPDATA%\clipboard-history\history.json` に最大 500 件を保存します。
 
 初回・更新時ともに、リポジトリのフォルダで次の1コマンドだけ実行してください。
 
@@ -27,7 +27,7 @@ Windows のテキストクリップボードをローカル JSON に保存し、
 
 ## オプション
 
-両方のスクリプトは `-HistoryPath` と `-MaxHistory` を受け取ります。監視スクリプトには `-IntervalMilliseconds`（既定 500）、`-MaxContentLength`（既定 10000）、テスト向けの `-RunOnce` と `-MutexName` もあります。
+両方のスクリプトは `-HistoryPath` と `-MaxHistory` を受け取ります。`-MaxHistory` の既定値は 500 です。監視スクリプトには `-IntervalMilliseconds`（既定 500）、`-MaxContentLength`（既定 10000）、テスト向けの `-RunOnce` と `-MutexName` もあります。
 
 ```powershell
 .\clipboard-watch.ps1 -HistoryPath "$env:TEMP\history.json" -MaxHistory 100
