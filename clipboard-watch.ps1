@@ -97,12 +97,16 @@ try {
         $historyForm = [System.Windows.Forms.Form]::new()
         $historyForm.Text = 'Clipboard history'
         $historyForm.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
-        $historyForm.Size = [System.Drawing.Size]::new(980, 560)
-        $historyForm.MinimumSize = [System.Drawing.Size]::new(640, 360)
+        $historyForm.Size = [System.Drawing.Size]::new(1100, 650)
+        $historyForm.MinimumSize = [System.Drawing.Size]::new(760, 450)
+
+        $uiFont = [System.Drawing.Font]::new('Segoe UI', 12)
+        $headerFont = [System.Drawing.Font]::new('Segoe UI', 12, [System.Drawing.FontStyle]::Bold)
 
         $searchBox = [System.Windows.Forms.TextBox]::new()
         $searchBox.Dock = [System.Windows.Forms.DockStyle]::Top
-        $searchBox.Height = 28
+        $searchBox.Font = $uiFont
+        $searchBox.Height = 36
         $searchBox.Margin = [System.Windows.Forms.Padding]::new(8)
 
         $grid = [System.Windows.Forms.DataGridView]::new()
@@ -115,6 +119,11 @@ try {
         $grid.MultiSelect = $false
         $grid.SelectionMode = [System.Windows.Forms.DataGridViewSelectionMode]::FullRowSelect
         $grid.RowHeadersVisible = $false
+        $grid.Font = $uiFont
+        $grid.ColumnHeadersDefaultCellStyle.Font = $headerFont
+        $grid.ColumnHeadersHeight = 36
+        $grid.RowTemplate.Height = 32
+        $grid.DefaultCellStyle.Padding = [System.Windows.Forms.Padding]::new(4, 2, 4, 2)
 
         [void]$grid.Columns.Add('LastUsed', 'Last used')
         [void]$grid.Columns.Add('Preview', 'Preview')
@@ -123,8 +132,9 @@ try {
 
         $status = [System.Windows.Forms.Label]::new()
         $status.Dock = [System.Windows.Forms.DockStyle]::Bottom
-        $status.Height = 28
-        $status.Padding = [System.Windows.Forms.Padding]::new(8, 6, 8, 0)
+        $status.Font = [System.Drawing.Font]::new('Segoe UI', 11)
+        $status.Height = 34
+        $status.Padding = [System.Windows.Forms.Padding]::new(10, 7, 10, 0)
         $status.Text = 'New copies appear automatically. Type to search the history.'
 
         $historyForm.Controls.Add($grid)
