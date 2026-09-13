@@ -5,16 +5,47 @@ param(
     [ValidateRange(1, 2147483647)][int] $MaxHistory = 500,
     [ValidateRange(1, 2147483647)][int] $MaxContentLength = 10000,
     [switch] $RunOnce,
-    [string] $MutexName = 'Local\PsClipboardHistoryWatch'
+    [string] $MutexName = 'Local\PsClipboardHistoryWatch',
+    [string] $LogPath,
+    [switch] $EnableDebugLog
 )
 
 Import-Module (Join-Path $PSScriptRoot 'ClipboardHistory.psm1') -Force
 
+if ([string]::IsNullOrWhiteSpace($LogPath)) {
+    $LogPath = Join-Path $env:LOCALAPPDATA 'clipboard-history\watch.log'
+}
+$logDirectory = Split-Path -Parent $LogPath
+if (-not (Test-Path -LiteralPath $logDirectory)) {
+    New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
+}
+
+function Write-WatchLog {
+    param(
+        [Parameter(Mandatory = $true)][string] $Message,
+        [ValidateSet('INFO', 'WARN', 'ERROR')][string] $Level = 'INFO'
+    )
+
+    if (-not $EnableDebugLog -and $Level -eq 'INFO') {
+        return
+    }
+    $line = '[{0}] [{1}] {2}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff'), $Level, $Message
+    try {
+        Add-Content -LiteralPath $LogPath -Value $line -Encoding UTF8
+    }
+    catch {
+        # Logging must never crash the watcher.
+    }
+}
+
 $mutex = [System.Threading.Mutex]::new($false, $MutexName)
 if (-not $mutex.WaitOne(0, $false)) {
     Write-Host 'clipboard-watch.ps1 is already running.'
+    Write-WatchLog -Level WARN -Message 'Startup aborted: another instance is already running.'
     exit 1
 }
+
+Write-WatchLog -Message ('Starting clipboard-watch.ps1 (PID {0}).' -f $PID)
 
 try {
     $applicationContext = $null
@@ -339,6 +370,7 @@ try {
         }
         catch {
             Write-Warning "Could not read the clipboard. Retrying: $($_.Exception.Message)"
+            Write-WatchLog -Level WARN -Message "Could not read the clipboard: $($_.Exception.Message)"
         }
     }
 
@@ -348,6 +380,7 @@ try {
         return
     }
 
+    Write-WatchLog -Message 'Initializing tray icon and history window.'
     $applicationContext = [System.Windows.Forms.ApplicationContext]::new()
     $timer = [System.Windows.Forms.Timer]::new()
     $menu = [System.Windows.Forms.ContextMenuStrip]::new()
@@ -367,7 +400,13 @@ try {
     $timer.Start()
     $notifyIcon.Visible = $true
     & $openHistory
+    Write-WatchLog -Message 'Entering the message loop.'
     [System.Windows.Forms.Application]::Run($applicationContext)
+    Write-WatchLog -Message 'Message loop exited normally.'
+}
+catch {
+    Write-WatchLog -Level ERROR -Message "Unhandled exception: $($_.Exception.GetType().FullName): $($_.Exception.Message)`n$($_.ScriptStackTrace)"
+    throw
 }
 finally {
     if ($null -ne $notifyIcon) {
@@ -383,6 +422,7 @@ finally {
     if ($null -ne $applicationContext) {
         $applicationContext.Dispose()
     }
+    Write-WatchLog -Message 'Shutting down clipboard-watch.ps1.'
     $mutex.ReleaseMutex() | Out-Null
     $mutex.Dispose()
 }

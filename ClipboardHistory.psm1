@@ -80,29 +80,29 @@ function New-ClipboardImageHistoryItem {
     }
 }
 
+function Get-ClipboardImageFingerprint {
+    param([Parameter(Mandatory = $true)][System.Drawing.Image] $Image)
+
+    $stream = [System.IO.MemoryStream]::new()
+    try {
+        $Image.Save($stream, [System.Drawing.Imaging.ImageFormat]::Png)
+        $hash = [System.Security.Cryptography.SHA256]::Create()
+        try {
+            return ([BitConverter]::ToString($hash.ComputeHash($stream.ToArray()))).Replace('-', '')
+        }
+        finally {
+            $hash.Dispose()
+        }
+    }
+    finally {
+        $stream.Dispose()
+    }
+}
+
 function Get-ClipboardSource {
     $windowHandle = [ClipboardHistory.NativeMethods]::GetForegroundWindow()
     if ($windowHandle -eq [IntPtr]::Zero) {
         return $null
-    }
-
-    function Get-ClipboardImageFingerprint {
-        param([Parameter(Mandatory = $true)][System.Drawing.Image] $Image)
-
-        $stream = [System.IO.MemoryStream]::new()
-        try {
-            $Image.Save($stream, [System.Drawing.Imaging.ImageFormat]::Png)
-            $hash = [System.Security.Cryptography.SHA256]::Create()
-            try {
-                return ([BitConverter]::ToString($hash.ComputeHash($stream.ToArray()))).Replace('-', '')
-            }
-            finally {
-                $hash.Dispose()
-            }
-        }
-        finally {
-            $stream.Dispose()
-        }
     }
 
     $processId = [uint32]0
@@ -323,16 +323,16 @@ function Get-ClipboardHistoryPreview {
     if ($preview.Length -gt $Length) {
         return $preview.Substring(0, $Length - 3) + '...'
     }
-
-    function Get-ClipboardHistoryItemLabel {
-        param([Parameter(Mandatory = $true)][psobject] $Item)
-
-        if ($Item.type -eq 'image') {
-            return '[Image]'
-        }
-        return Get-ClipboardHistoryPreview -Content ([string]$Item.content)
-    }
     return $preview
+}
+
+function Get-ClipboardHistoryItemLabel {
+    param([Parameter(Mandatory = $true)][psobject] $Item)
+
+    if ($Item.type -eq 'image') {
+        return '[Image]'
+    }
+    return Get-ClipboardHistoryPreview -Content ([string]$Item.content)
 }
 
 function Show-ClipboardHistoryPicker {
@@ -384,4 +384,4 @@ function Show-ClipboardHistoryPicker {
     return $true
 }
 
-Export-ModuleMember -Function Get-ClipboardHistoryPath, Get-ClipboardHistory, Save-ClipboardHistory, Add-ClipboardHistoryItem, Add-ClipboardImageHistoryItem, Use-ClipboardHistoryItem, Get-ClipboardHistoryPreview, Get-ClipboardHistoryItemLabel, Get-ClipboardSource, Show-ClipboardHistoryPicker
+Export-ModuleMember -Function Get-ClipboardHistoryPath, Get-ClipboardImageDirectory, Get-ClipboardHistory, Save-ClipboardHistory, Add-ClipboardHistoryItem, Add-ClipboardImageHistoryItem, Use-ClipboardHistoryItem, Get-ClipboardHistoryPreview, Get-ClipboardHistoryItemLabel, Get-ClipboardImageFingerprint, Get-ClipboardSource, Show-ClipboardHistoryPicker
