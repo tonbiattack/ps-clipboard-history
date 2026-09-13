@@ -61,9 +61,33 @@ try {
         Grid            = $null
         SearchBox       = $null
         Status          = $null
+        PreviewBox      = $null
         CopyHistoryRow  = $null
         NumberPrefix    = ''
         NumberInputAt   = [datetime]::MinValue
+    }
+
+    $updatePreview = {
+        if ($null -eq $state.PreviewBox) {
+            return
+        }
+        $previousImage = $state.PreviewBox.Image
+        $state.PreviewBox.Image = $null
+        if ($null -ne $previousImage) {
+            $previousImage.Dispose()
+        }
+
+        $item = $null
+        if ($state.Grid.SelectedRows.Count -gt 0) {
+            $item = $state.Grid.SelectedRows[0].Tag
+        }
+        if ($null -ne $item -and $item.type -eq 'image' -and (Test-Path -LiteralPath $item.imagePath)) {
+            $state.PreviewBox.Image = [System.Drawing.Image]::FromFile($item.imagePath)
+            $state.PreviewBox.Visible = $true
+        }
+        else {
+            $state.PreviewBox.Visible = $false
+        }
     }
 
     $refreshHistoryGrid = {
@@ -117,6 +141,7 @@ try {
             if ($null -ne $selectedRow) {
                 $selectedRow.Selected = $true
             }
+            & $updatePreview
 
             if ($null -ne $state.Status) {
                 if ([string]::IsNullOrWhiteSpace($query)) {
@@ -164,6 +189,14 @@ try {
         $searchBox.Margin = [System.Windows.Forms.Padding]::new(8)
         $searchBox.Visible = $false
 
+        $previewBox = [System.Windows.Forms.PictureBox]::new()
+        $previewBox.Dock = [System.Windows.Forms.DockStyle]::Right
+        $previewBox.Width = 320
+        $previewBox.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::Zoom
+        $previewBox.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+        $previewBox.BackColor = [System.Drawing.SystemColors]::ControlLight
+        $previewBox.Visible = $false
+
         $grid = [System.Windows.Forms.DataGridView]::new()
         $grid.Dock = [System.Windows.Forms.DockStyle]::Fill
         $grid.ReadOnly = $true
@@ -197,12 +230,14 @@ try {
         $status.Text = 'Type a number to select, then press Enter to copy. Ctrl+F searches.'
 
         $historyForm.Controls.Add($grid)
+        $historyForm.Controls.Add($previewBox)
         $historyForm.Controls.Add($searchBox)
         $historyForm.Controls.Add($status)
         $state.HistoryForm = $historyForm
         $state.Grid = $grid
         $state.SearchBox = $searchBox
         $state.Status = $status
+        $state.PreviewBox = $previewBox
 
         $state.CopyHistoryRow = {
             param([int] $RowIndex)
@@ -310,6 +345,12 @@ try {
             }
         })
 
+        $grid.Add_SelectionChanged({
+            if (-not $state.IsRefreshing) {
+                & $updatePreview
+            }
+        })
+
         $grid.Add_CellClick({
             param($sender, $eventArgs)
             & $state.CopyHistoryRow $eventArgs.RowIndex
@@ -330,6 +371,12 @@ try {
             if ($eventArgs.CloseReason -eq [System.Windows.Forms.CloseReason]::UserClosing) {
                 $eventArgs.Cancel = $true
                 $sender.Hide()
+            }
+        })
+
+        $historyForm.Add_FormClosed({
+            if ($null -ne $state.PreviewBox.Image) {
+                $state.PreviewBox.Image.Dispose()
             }
         })
 
