@@ -63,8 +63,6 @@ try {
         Status          = $null
         PreviewBox      = $null
         CopyHistoryRow  = $null
-        NumberPrefix    = ''
-        NumberInputAt   = [datetime]::MinValue
     }
 
     $updatePreview = {
@@ -94,7 +92,6 @@ try {
         if ($null -eq $state.Grid -or $state.HistoryForm.IsDisposed) {
             return
         }
-        $state.NumberPrefix = ''
 
         $selectedContent = $null
         if ($state.Grid.SelectedRows.Count -gt 0) {
@@ -118,9 +115,7 @@ try {
 
             $selectedRow = $null
             foreach ($item in $items) {
-                $displayNumber = $state.Grid.Rows.Count + 1
                 $rowIndex = $state.Grid.Rows.Add(
-                    $displayNumber,
                     ([datetime]$item.lastUsedAt).ToString('yyyy/MM/dd HH:mm:ss'),
                     (Get-ClipboardHistoryItemLabel -Item $item),
                     $(if ([string]::IsNullOrWhiteSpace([string]$item.sourceApp)) {
@@ -213,11 +208,9 @@ try {
         $grid.RowTemplate.Height = 32
         $grid.DefaultCellStyle.Padding = [System.Windows.Forms.Padding]::new(4, 2, 4, 2)
 
-        [void]$grid.Columns.Add('Number', 'No.')
         [void]$grid.Columns.Add('LastUsed', 'Last used')
         [void]$grid.Columns.Add('Preview', 'Preview')
         [void]$grid.Columns.Add('Source', 'Copied from')
-        $grid.Columns['Number'].Width = 56
         $grid.Columns['LastUsed'].Width = 150
         $grid.Columns['Source'].Width = 300
         $grid.Columns['Preview'].AutoSizeMode = [System.Windows.Forms.DataGridViewAutoSizeColumnMode]::Fill
@@ -227,7 +220,7 @@ try {
         $status.Font = [System.Drawing.Font]::new('Segoe UI', 11)
         $status.Height = 34
         $status.Padding = [System.Windows.Forms.Padding]::new(10, 7, 10, 0)
-        $status.Text = 'Type a number to select, then press Enter to copy. Ctrl+F searches.'
+        $status.Text = 'Select a row and press Enter to copy. Ctrl+F searches.'
 
         $historyForm.Controls.Add($grid)
         $historyForm.Controls.Add($previewBox)
@@ -259,7 +252,6 @@ try {
                 Use-ClipboardHistoryItem -Content $content -Path $HistoryPath -MaxHistory $MaxHistory | Out-Null
                 $state.PreviousContent = $content
             }
-            $state.NumberPrefix = ''
             & $refreshHistoryGrid
             $state.Status.Text = 'Copied to clipboard.'
         }
@@ -293,55 +285,6 @@ try {
                 $state.SearchBox.Visible = $true
                 $state.SearchBox.Focus()
                 $state.SearchBox.SelectAll()
-                return
-            }
-
-            if ($state.SearchBox.Focused) {
-                return
-            }
-
-            $digit = $null
-            $keyCode = [int]$eventArgs.KeyCode
-            if ($keyCode -ge [int][System.Windows.Forms.Keys]::D0 -and $keyCode -le [int][System.Windows.Forms.Keys]::D9) {
-                $digit = $keyCode - [int][System.Windows.Forms.Keys]::D0
-            }
-            elseif ($keyCode -ge [int][System.Windows.Forms.Keys]::NumPad0 -and $keyCode -le [int][System.Windows.Forms.Keys]::NumPad9) {
-                $digit = $keyCode - [int][System.Windows.Forms.Keys]::NumPad0
-            }
-
-            if ($null -eq $digit) {
-                if ($eventArgs.KeyCode -eq [System.Windows.Forms.Keys]::Escape) {
-                    $eventArgs.SuppressKeyPress = $true
-                    $state.NumberPrefix = ''
-                    $state.NumberInputAt = [datetime]::MinValue
-                    $state.Status.Text = 'Number selection cleared.'
-                }
-                return
-            }
-
-            $eventArgs.SuppressKeyPress = $true
-            if (((Get-Date) - $state.NumberInputAt).TotalMilliseconds -gt 1200) {
-                $state.NumberPrefix = ''
-            }
-            $state.NumberInputAt = Get-Date
-            $state.NumberPrefix += [string]$digit
-            $selectedNumber = 0
-            if (-not [int]::TryParse($state.NumberPrefix, [ref]$selectedNumber)) {
-                $state.Status.Text = ('No. {0} was not found. Press Escape to clear it.' -f $state.NumberPrefix)
-                return
-            }
-
-            $selectedIndex = $selectedNumber - 1
-            if ($selectedIndex -ge 0 -and $selectedIndex -lt $state.Grid.Rows.Count) {
-                $state.Grid.ClearSelection()
-                $row = $state.Grid.Rows[$selectedIndex]
-                $row.Selected = $true
-                $state.Grid.CurrentCell = $row.Cells['Preview']
-                $state.Grid.FirstDisplayedScrollingRowIndex = $selectedIndex
-                $state.Status.Text = ('No. {0} selected. Press Enter to copy.' -f $state.NumberPrefix)
-            }
-            else {
-                $state.Status.Text = ('No. {0} was not found.' -f $state.NumberPrefix)
             }
         })
 

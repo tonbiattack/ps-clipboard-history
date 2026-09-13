@@ -50,13 +50,11 @@ Describe 'ClipboardHistory' {
         $source = [pscustomobject]@{
             AppName = 'msedge'
             WindowTitle = 'Example page'
-            ProcessPath = 'C:\Program Files\Microsoft\Edge\Application\msedge.exe'
         }
         Add-ClipboardHistoryItem -Content 'copied text' -Path $historyPath -Source $source | Should -BeTrue
         $item = @(Get-ClipboardHistory -Path $historyPath)[0]
         $item.sourceApp | Should -Be 'msedge'
         $item.sourceWindowTitle | Should -Be 'Example page'
-        $item.sourceProcessPath | Should -Be $source.ProcessPath
     }
 
     It 'stores an image as a PNG and restores its history metadata' {

@@ -57,7 +57,6 @@ function New-ClipboardHistoryItem {
         lastUsedAt        = $Timestamp.ToString('o')
         sourceApp         = if ($null -ne $Source) { [string]$Source.AppName } else { $null }
         sourceWindowTitle = if ($null -ne $Source) { [string]$Source.WindowTitle } else { $null }
-        sourceProcessPath = if ($null -ne $Source) { [string]$Source.ProcessPath } else { $null }
     }
 }
 
@@ -76,7 +75,6 @@ function New-ClipboardImageHistoryItem {
         lastUsedAt        = $Timestamp.ToString('o')
         sourceApp         = if ($null -ne $Source) { [string]$Source.AppName } else { $null }
         sourceWindowTitle = if ($null -ne $Source) { [string]$Source.WindowTitle } else { $null }
-        sourceProcessPath = if ($null -ne $Source) { [string]$Source.ProcessPath } else { $null }
     }
 }
 
@@ -115,18 +113,10 @@ function Get-ClipboardSource {
         $process = [System.Diagnostics.Process]::GetProcessById([int]$processId)
         $titleBuffer = [System.Text.StringBuilder]::new(1024)
         [void][ClipboardHistory.NativeMethods]::GetWindowText($windowHandle, $titleBuffer, $titleBuffer.Capacity)
-        $processPath = $null
-        try {
-            $processPath = $process.MainModule.FileName
-        }
-        catch {
-            # Some protected processes do not expose their executable path.
-        }
 
         return [pscustomobject]@{
             AppName     = $process.ProcessName
             WindowTitle = $titleBuffer.ToString()
-            ProcessPath = $processPath
         }
     }
     catch {
@@ -165,9 +155,10 @@ function Get-ClipboardHistory {
             if ($item.type -eq 'image' -and [string]::IsNullOrWhiteSpace([string]$item.imagePath)) {
                 throw 'The history file has an invalid image item.'
             }
-            # Remove the no-longer-used counter from histories written by older versions.
+            # Remove properties no longer used by histories written by older versions.
             [void]$item.PSObject.Properties.Remove('useCount')
-            foreach ($propertyName in @('sourceApp', 'sourceWindowTitle', 'sourceProcessPath')) {
+            [void]$item.PSObject.Properties.Remove('sourceProcessPath')
+            foreach ($propertyName in @('sourceApp', 'sourceWindowTitle')) {
                 if ($null -eq $item.PSObject.Properties[$propertyName]) {
                     $item | Add-Member -NotePropertyName $propertyName -NotePropertyValue $null
                 }
@@ -235,7 +226,6 @@ function Add-ClipboardHistoryItem {
         if ($null -ne $Source) {
             $item.sourceApp = [string]$Source.AppName
             $item.sourceWindowTitle = [string]$Source.WindowTitle
-            $item.sourceProcessPath = [string]$Source.ProcessPath
         }
     }
     else {
@@ -335,53 +325,4 @@ function Get-ClipboardHistoryItemLabel {
     return Get-ClipboardHistoryPreview -Content ([string]$Item.content)
 }
 
-function Show-ClipboardHistoryPicker {
-    [CmdletBinding()]
-    param(
-        [string] $Path,
-        [ValidateRange(1, 2147483647)][int] $MaxHistory = $script:DefaultMaxHistory
-    )
-
-    $items = @(Get-ClipboardHistory -Path $Path)
-    if ($items.Count -eq 0) {
-        return $false
-    }
-
-    $displayItems = foreach ($item in $items) {
-        [pscustomobject]@{
-            LastUsed = ([datetime]$item.lastUsedAt).ToString('yyyy/MM/dd HH:mm')
-            Preview  = Get-ClipboardHistoryItemLabel -Item $item
-            Content  = [string]$item.content
-        }
-    }
-
-    if (-not (Get-Command Out-GridView -ErrorAction SilentlyContinue)) {
-        throw 'Out-GridView is unavailable. Start clipboard-select.ps1 from a visible PowerShell window instead.'
-    }
-
-    $selectedDisplay = $displayItems | Select-Object LastUsed, Preview | Out-GridView -Title 'Clipboard history' -PassThru
-    if ($null -eq $selectedDisplay) {
-        return $false
-    }
-
-    $selected = $displayItems | Where-Object {
-        $_.LastUsed -eq $selectedDisplay.LastUsed -and $_.Preview -eq $selectedDisplay.Preview
-    } | Select-Object -First 1
-
-    if ($null -eq $selected) {
-        return $false
-    }
-
-    if ($selectedDisplay.Preview -eq '[Image]') {
-        $selectedItem = $items | Where-Object { (Get-ClipboardHistoryItemLabel -Item $_) -eq $selectedDisplay.Preview } | Select-Object -First 1
-        $image = [System.Drawing.Image]::FromFile($selectedItem.imagePath)
-        try { [System.Windows.Forms.Clipboard]::SetImage($image) } finally { $image.Dispose() }
-        Use-ClipboardHistoryItem -Item $selectedItem -Path $Path -MaxHistory $MaxHistory | Out-Null
-        return $true
-    }
-    Set-Clipboard -Value $selected.Content
-    Use-ClipboardHistoryItem -Content $selected.Content -Path $Path -MaxHistory $MaxHistory | Out-Null
-    return $true
-}
-
-Export-ModuleMember -Function Get-ClipboardHistoryPath, Get-ClipboardImageDirectory, Get-ClipboardHistory, Save-ClipboardHistory, Add-ClipboardHistoryItem, Add-ClipboardImageHistoryItem, Use-ClipboardHistoryItem, Get-ClipboardHistoryPreview, Get-ClipboardHistoryItemLabel, Get-ClipboardImageFingerprint, Get-ClipboardSource, Show-ClipboardHistoryPicker
+Export-ModuleMember -Function Get-ClipboardHistoryPath, Get-ClipboardImageDirectory, Get-ClipboardHistory, Save-ClipboardHistory, Add-ClipboardHistoryItem, Add-ClipboardImageHistoryItem, Use-ClipboardHistoryItem, Get-ClipboardHistoryPreview, Get-ClipboardHistoryItemLabel, Get-ClipboardImageFingerprint, Get-ClipboardSource

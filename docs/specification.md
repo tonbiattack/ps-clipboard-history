@@ -28,22 +28,17 @@ Windows標準のクリップボード履歴を補助するため、PowerShellの
 ps-clipboard-history/
 ├─ clipboard-watch.ps1
 ├─ clipboard-watch.vbs
-├─ clipboard-select.ps1
 ├─ install-shortcut.ps1
 └─ history.json
 ```
 
 ### clipboard-watch.ps1
 
-クリップボードを監視し、変更されたテキストを履歴に保存する。
-
-### clipboard-select.ps1
-
-保存済み履歴を一覧表示し、選択した内容を再度クリップボードへ設定する。
+クリップボードを監視し、変更されたテキストを履歴に保存する。常駐アプリとして履歴一覧ウィンドウも提供する。
 
 ### install-shortcut.ps1
 
-`clipboard-select.ps1` を簡単に起動するデスクトップショートカットと、ログイン時に監視を開始するスタートアップショートカットを作成する。スタートメニューには項目を作成しない。
+常駐アプリを起動するデスクトップショートカットと、ログイン時に監視を開始するスタートアップショートカットを作成する。スタートメニューには項目を作成しない。
 
 ### setup.ps1
 
@@ -75,12 +70,11 @@ ps-clipboard-history/
   "createdAt": "2026-09-11T00:00:00",
   "lastUsedAt": "2026-09-11T00:00:00",
   "sourceApp": "msedge",
-  "sourceWindowTitle": "Example page",
-  "sourceProcessPath": "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe"
+  "sourceWindowTitle": "Example page"
 }
 ```
 
-`sourceApp`、`sourceWindowTitle`、`sourceProcessPath` は、コピー時に前面にあったウィンドウのプロセス名・ウィンドウタイトル・実行ファイルパスです。既存の履歴や取得できない保護プロセスでは空欄になる場合があります。
+`sourceApp`、`sourceWindowTitle` は、コピー時に前面にあったウィンドウのプロセス名・ウィンドウタイトルです。既存の履歴や取得できない保護プロセスでは空欄になる場合があります。
 
 ## 5. 保存件数
 
@@ -136,17 +130,15 @@ lastUsedAt DESC
 
 ## 9. 履歴選択
 
-`clipboard-select.ps1` を実行すると、履歴一覧を表示する。
-
-可能な環境では `Out-GridView -PassThru` を利用する。
+常駐アプリの履歴ウィンドウで一覧を表示する。
 
 表示例:
 
 ```text
-No.  LastUsed             Preview
-1    2026/09/11 00:15     git rebase origin/main
-2    2026/09/11 00:10     SELECT * FROM users...
-3    2026/09/11 00:03     npm run build
+LastUsed             Preview
+2026/09/11 00:15     git rebase origin/main
+2026/09/11 00:10     SELECT * FROM users...
+2026/09/11 00:03     npm run build
 ```
 
 選択した項目を `Set-Clipboard` で現在のクリップボードへ戻す。
@@ -228,12 +220,12 @@ MutexまたはPIDファイルを利用する。
 
 利用者が毎回PowerShellを開き、`.ps1` ファイルを直接指定して実行する運用は避ける。
 
-推奨する利用方法は、Windowsショートカット経由で `clipboard-select.ps1` を起動する方式とする。GUI を利用できる環境では PowerShell のコンソールを非表示で起動する。
+推奨する利用方法は、Windowsショートカット経由で常駐アプリ(`clipboard-watch.vbs`)を起動する方式とする。GUI を利用できる環境では PowerShell のコンソールを非表示で起動する。
 
 ショートカットの実行対象は以下のような形式とする。
 
 ```text
-powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "<配置先>\clipboard-select.ps1"
+wscript.exe "<配置先>\clipboard-watch.vbs"
 ```
 
 `-NoProfile` を指定し、利用者のPowerShellプロファイルによる動作差を減らす。
@@ -333,7 +325,7 @@ Set-Clipboard
 3. 直近500件を保存できる
 4. 重複履歴を作らない
 5. 再利用した履歴が先頭へ移動する
-6. Out-GridViewから履歴を選択できる
+6. 履歴一覧から選択できる
 7. 選択内容をクリップボードへ戻せる
 8. PC再起動後も履歴が残る
 9. 外部通信を行わない

@@ -7,11 +7,6 @@ param(
 
 Set-StrictMode -Version Latest
 
-$selectorPath = Join-Path $PSScriptRoot 'clipboard-select.ps1'
-if (-not (Test-Path -LiteralPath $selectorPath -PathType Leaf)) {
-    throw "clipboard-select.ps1 was not found: $selectorPath"
-}
-
 $watcherLauncherPath = Join-Path $PSScriptRoot 'clipboard-watch.vbs'
 if (-not (Test-Path -LiteralPath $watcherLauncherPath -PathType Leaf)) {
     throw "clipboard-watch.vbs was not found: $watcherLauncherPath"
