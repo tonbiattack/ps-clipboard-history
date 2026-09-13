@@ -115,18 +115,17 @@ try {
 
             $selectedRow = $null
             foreach ($item in $items) {
+                $sourceApp = if ([string]::IsNullOrWhiteSpace([string]$item.sourceApp)) { 'Unknown' } else { [string]$item.sourceApp }
                 $rowIndex = $state.Grid.Rows.Add(
                     ([datetime]$item.lastUsedAt).ToString('yyyy/MM/dd HH:mm:ss'),
                     (Get-ClipboardHistoryItemLabel -Item $item),
-                    $(if ([string]::IsNullOrWhiteSpace([string]$item.sourceApp)) {
-                        'Unknown'
-                    }
-                    else {
-                        '{0} - {1}' -f $item.sourceApp, $item.sourceWindowTitle
-                    })
+                    $sourceApp
                 )
                 $row = $state.Grid.Rows[$rowIndex]
                 $row.Tag = $item
+                if (-not [string]::IsNullOrWhiteSpace([string]$item.sourceWindowTitle)) {
+                    $row.Cells['Source'].ToolTipText = '{0} - {1}' -f $sourceApp, $item.sourceWindowTitle
+                }
                 if (($item.type -eq 'text' -and [string]$item.content -ceq $selectedContent) -or
                     ($item.type -eq 'image' -and '[Image]' -eq $selectedContent)) {
                     $selectedRow = $row
@@ -212,7 +211,7 @@ try {
         [void]$grid.Columns.Add('Preview', 'Preview')
         [void]$grid.Columns.Add('Source', 'Copied from')
         $grid.Columns['LastUsed'].Width = 150
-        $grid.Columns['Source'].Width = 300
+        $grid.Columns['Source'].Width = 140
         $grid.Columns['Preview'].AutoSizeMode = [System.Windows.Forms.DataGridViewAutoSizeColumnMode]::Fill
 
         $status = [System.Windows.Forms.Label]::new()
