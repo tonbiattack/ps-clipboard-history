@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string] $HistoryPath,
     [ValidateRange(50, 60000)][int] $IntervalMilliseconds = 500,
@@ -12,6 +12,7 @@ param(
 
 Import-Module (Join-Path $PSScriptRoot 'ClipboardHistory.psm1') -Force
 
+# ログは既定では警告・エラーだけを記録し、詳細ログは明示指定時だけ有効にします。
 if ([string]::IsNullOrWhiteSpace($LogPath)) {
     $LogPath = Join-Path $env:LOCALAPPDATA 'clipboard-history\watch.log'
 }
@@ -26,6 +27,7 @@ function Write-WatchLog {
         [ValidateSet('INFO', 'WARN', 'ERROR')][string] $Level = 'INFO'
     )
 
+    # 通常運用でログが肥大化しないよう、INFO は -EnableDebugLog 指定時だけ出力します。
     if (-not $EnableDebugLog -and $Level -eq 'INFO') {
         return
     }
@@ -34,11 +36,12 @@ function Write-WatchLog {
         Add-Content -LiteralPath $LogPath -Value $line -Encoding UTF8
     }
     catch {
-        # Logging must never crash the watcher.
+        # ログ出力の失敗で常駐監視そのものを停止させません。
     }
 }
 
 $mutex = [System.Threading.Mutex]::new($false, $MutexName)
+# 同一ユーザーでの二重起動を防ぎ、複数の監視ループが同じ履歴を書き換えないようにします。
 if (-not $mutex.WaitOne(0, $false)) {
     Write-Host 'clipboard-watch.ps1 is already running.'
     Write-WatchLog -Level WARN -Message 'Startup aborted: another instance is already running.'
@@ -54,6 +57,7 @@ try {
     $menu = $null
     $timer = $null
 
+    # UI と監視ループで共有する状態を一か所にまとめ、画面更新中の再入を検出します。
     $state = [pscustomobject]@{
         PreviousContent = $null
         PreviousImageFingerprint = $null
@@ -79,6 +83,7 @@ try {
         if ($null -eq $state.PreviewBox) {
             return
         }
+        # ファイルから読み込んだ画像は毎回解放し、プレビュー切替時のハンドルリークを防ぎます。
         $previousImage = $state.PreviewBox.Image
         $state.PreviewBox.Image = $null
         if ($null -ne $previousImage) {
@@ -113,11 +118,13 @@ try {
             $query = [string]$state.SearchBox.Text
         }
 
+        # 更新中はイベント処理を抑止し、行の追加・選択変更がコピー処理を発火しないようにします。
         $state.IsRefreshing = $true
         try {
             $state.Grid.Rows.Clear()
             $items = @(Get-ClipboardHistory -Path $HistoryPath)
             if (-not [string]::IsNullOrWhiteSpace($query)) {
+                # 画像は検索対象から除外せず、テキストだけを大文字小文字なしで絞り込みます。
                 $items = @($items | Where-Object {
                     $_.type -eq 'image' -or ([string]$_.content).IndexOf($query, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
                 })
@@ -178,6 +185,7 @@ try {
             return
         }
 
+        # 閉じたフォームは破棄せず Hide するため、再表示時も監視状態を維持できます。
         $historyForm = [System.Windows.Forms.Form]::new()
         $historyForm.Text = 'Clipboard history'
         $historyForm.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
@@ -251,6 +259,7 @@ try {
             }
 
             $item = $state.Grid.Rows[$RowIndex].Tag
+            # テキストと画像で設定 API が異なるため、履歴の種別に応じて復元します。
             if ($item.type -eq 'image') {
                 $image = [System.Drawing.Image]::FromFile($item.imagePath)
                 try { [System.Windows.Forms.Clipboard]::SetImage($image) } finally { $image.Dispose() }
@@ -324,6 +333,7 @@ try {
             param($sender, $eventArgs)
             if ($eventArgs.CloseReason -eq [System.Windows.Forms.CloseReason]::UserClosing) {
                 $eventArgs.Cancel = $true
+                # × ボタンは一覧を隠すだけで、通知領域の常駐監視は継続します。
                 $sender.Hide()
             }
         })
@@ -341,11 +351,13 @@ try {
 
     $recordClipboard = {
         try {
+            # 画像を優先して判定し、画像でなければテキストとして監視します。
             if ([System.Windows.Forms.Clipboard]::ContainsImage()) {
                 $image = [System.Windows.Forms.Clipboard]::GetImage()
                 try {
                     $fingerprint = Get-ClipboardImageFingerprint -Image $image
                     if ($fingerprint -cne $state.PreviousImageFingerprint) {
+                        # ハッシュが変化した画像だけを保存し、同一画像の連続取得を避けます。
                         $source = Get-ClipboardSource
                         $wasRecorded = Add-ClipboardImageHistoryItem -Image $image -Path $HistoryPath -MaxHistory $MaxHistory -Source $source
                         $state.PreviousImageFingerprint = $fingerprint
@@ -360,6 +372,7 @@ try {
 
             $content = Get-Clipboard -Raw -ErrorAction Stop
             if ($content -is [string] -and $content -cne $state.PreviousContent) {
+                # 前回の内容と比較して、実際に変わったときだけ JSON を更新します。
                 $source = Get-ClipboardSource
                 $wasRecorded = Add-ClipboardHistoryItem -Content $content -Path $HistoryPath -MaxHistory $MaxHistory -MaxContentLength $MaxContentLength -Source $source
                 $state.PreviousContent = $content
@@ -382,6 +395,7 @@ try {
     }
 
     Write-WatchLog -Message 'Initializing tray icon and history window.'
+    # 非表示の常駐プロセスは ApplicationContext で維持し、通知領域メニューから終了します。
     $applicationContext = [System.Windows.Forms.ApplicationContext]::new()
     $timer = [System.Windows.Forms.Timer]::new()
     $menu = [System.Windows.Forms.ContextMenuStrip]::new()
@@ -417,6 +431,7 @@ catch {
     throw
 }
 finally {
+    # 終了経路にかかわらず UI 資源と Mutex を解放し、次回起動を妨げないようにします。
     if ($null -ne $notifyIcon) {
         $notifyIcon.Visible = $false
         $notifyIcon.Dispose()

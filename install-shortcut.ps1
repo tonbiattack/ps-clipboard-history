@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string] $ShortcutDirectory,
     [string] $WatcherShortcutDirectory,
@@ -7,11 +7,13 @@ param(
 
 Set-StrictMode -Version Latest
 
+# 実際の PowerShell は VBS ランチャーが非表示で起動するため、ショートカットは VBS を指します。
 $watcherLauncherPath = Join-Path $PSScriptRoot 'clipboard-watch.vbs'
 if (-not (Test-Path -LiteralPath $watcherLauncherPath -PathType Leaf)) {
     throw "clipboard-watch.vbs was not found: $watcherLauncherPath"
 }
 
+# 引数がない通常利用では、現在ユーザーのデスクトップに作成します。
 if ([string]::IsNullOrWhiteSpace($ShortcutDirectory)) {
     $ShortcutDirectory = [Environment]::GetFolderPath([Environment+SpecialFolder]::DesktopDirectory)
 }
@@ -20,6 +22,7 @@ if (-not (Test-Path -LiteralPath $ShortcutDirectory -PathType Container)) {
     New-Item -ItemType Directory -Path $ShortcutDirectory -Force | Out-Null
 }
 
+# 自動起動用は現在ユーザーのスタートアップフォルダーに限定します。
 if ([string]::IsNullOrWhiteSpace($WatcherShortcutDirectory)) {
     $WatcherShortcutDirectory = [Environment]::GetFolderPath([Environment+SpecialFolder]::Startup)
 }
@@ -51,6 +54,7 @@ if (-not (Test-Path -LiteralPath $wscript -PathType Leaf)) {
 $trayIconPath = Join-Path $PSScriptRoot 'assets\tray-icon.ico'
 $iconLocation = if (Test-Path -LiteralPath $trayIconPath -PathType Leaf) { "$trayIconPath,0" } else { "$windowsPowerShell,0" }
 
+# WScript.Shell は .lnk を作る Windows 標準 COM オブジェクトです。
 $shell = New-Object -ComObject WScript.Shell
 $shortcut = $shell.CreateShortcut($shortcutPath)
 $shortcut.TargetPath = $wscript
