@@ -58,4 +58,19 @@ Describe 'ClipboardHistory' {
         $item.sourceWindowTitle | Should -Be 'Example page'
         $item.sourceProcessPath | Should -Be $source.ProcessPath
     }
+
+    It 'stores an image as a PNG and restores its history metadata' {
+        Add-Type -AssemblyName System.Drawing
+        $image = [System.Drawing.Bitmap]::new(2, 2)
+        try {
+            Add-ClipboardImageHistoryItem -Image $image -Path $historyPath | Should -BeTrue
+        }
+        finally {
+            $image.Dispose()
+        }
+        $item = @(Get-ClipboardHistory -Path $historyPath)[0]
+        $item.type | Should -Be 'image'
+        Test-Path -LiteralPath $item.imagePath | Should -BeTrue
+        Get-ClipboardHistoryItemLabel -Item $item | Should -Be '[Image]'
+    }
 }

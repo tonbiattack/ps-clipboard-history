@@ -24,6 +24,7 @@ try {
 
     $state = [pscustomobject]@{
         PreviousContent = $null
+        PreviousImageFingerprint = $null
         IsRefreshing    = $false
         HistoryForm     = $null
         Grid            = $null
@@ -56,7 +57,7 @@ try {
             $items = @(Get-ClipboardHistory -Path $HistoryPath)
             if (-not [string]::IsNullOrWhiteSpace($query)) {
                 $items = @($items | Where-Object {
-                    ([string]$_.content).IndexOf($query, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+                    $_.type -eq 'image' -or ([string]$_.content).IndexOf($query, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
                 })
             }
 
@@ -66,7 +67,7 @@ try {
                 $rowIndex = $state.Grid.Rows.Add(
                     $displayNumber,
                     ([datetime]$item.lastUsedAt).ToString('yyyy/MM/dd HH:mm:ss'),
-                    (Get-ClipboardHistoryPreview -Content ([string]$item.content)),
+                    (Get-ClipboardHistoryItemLabel -Item $item),
                     $(if ([string]::IsNullOrWhiteSpace([string]$item.sourceApp)) {
                         'Unknown'
                     }
@@ -75,8 +76,9 @@ try {
                     })
                 )
                 $row = $state.Grid.Rows[$rowIndex]
-                $row.Tag = [string]$item.content
-                if ($row.Tag -ceq $selectedContent) {
+                $row.Tag = $item
+                if (($item.type -eq 'text' -and [string]$item.content -ceq $selectedContent) -or
+                    ($item.type -eq 'image' -and '[Image]' -eq $selectedContent)) {
                     $selectedRow = $row
                 }
             }
@@ -178,14 +180,19 @@ try {
                 return
             }
 
-            $content = [string]$state.Grid.Rows[$RowIndex].Tag
-            if ([string]::IsNullOrWhiteSpace($content)) {
-                return
+            $item = $state.Grid.Rows[$RowIndex].Tag
+            if ($item.type -eq 'image') {
+                $image = [System.Drawing.Image]::FromFile($item.imagePath)
+                try { [System.Windows.Forms.Clipboard]::SetImage($image) } finally { $image.Dispose() }
+                Use-ClipboardHistoryItem -Item $item -Path $HistoryPath -MaxHistory $MaxHistory | Out-Null
+                $state.PreviousImageFingerprint = Get-ClipboardImageFingerprint -Image ([System.Windows.Forms.Clipboard]::GetImage())
             }
-
-            Set-Clipboard -Value $content
-            Use-ClipboardHistoryItem -Content $content -Path $HistoryPath -MaxHistory $MaxHistory | Out-Null
-            $state.PreviousContent = $content
+            else {
+                $content = [string]$item.content
+                Set-Clipboard -Value $content
+                Use-ClipboardHistoryItem -Content $content -Path $HistoryPath -MaxHistory $MaxHistory | Out-Null
+                $state.PreviousContent = $content
+            }
             $state.NumberPrefix = ''
             & $refreshHistoryGrid
             $state.Status.Text = 'Copied to clipboard.'
@@ -302,11 +309,29 @@ try {
 
     $recordClipboard = {
         try {
+            if ([System.Windows.Forms.Clipboard]::ContainsImage()) {
+                $image = [System.Windows.Forms.Clipboard]::GetImage()
+                try {
+                    $fingerprint = Get-ClipboardImageFingerprint -Image $image
+                    if ($fingerprint -cne $state.PreviousImageFingerprint) {
+                        $source = Get-ClipboardSource
+                        $wasRecorded = Add-ClipboardImageHistoryItem -Image $image -Path $HistoryPath -MaxHistory $MaxHistory -Source $source
+                        $state.PreviousImageFingerprint = $fingerprint
+                        if ($wasRecorded) { & $refreshHistoryGrid }
+                    }
+                }
+                finally {
+                    $image.Dispose()
+                }
+                return
+            }
+
             $content = Get-Clipboard -Raw -ErrorAction Stop
             if ($content -is [string] -and $content -cne $state.PreviousContent) {
                 $source = Get-ClipboardSource
                 $wasRecorded = Add-ClipboardHistoryItem -Content $content -Path $HistoryPath -MaxHistory $MaxHistory -MaxContentLength $MaxContentLength -Source $source
                 $state.PreviousContent = $content
+                $state.PreviousImageFingerprint = $null
                 if ($wasRecorded) {
                     & $refreshHistoryGrid
                 }

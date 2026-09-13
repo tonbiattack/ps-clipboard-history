@@ -33,6 +33,13 @@ function Get-ClipboardHistoryPath {
     return $Path
 }
 
+function Get-ClipboardImageDirectory {
+    param([string] $Path)
+
+    $historyPath = Get-ClipboardHistoryPath $Path
+    return Join-Path (Split-Path -Parent $historyPath) 'images'
+}
+
 function New-ClipboardHistoryItem {
     param(
         [Parameter(Mandatory = $true)][string] $Content,
@@ -41,7 +48,27 @@ function New-ClipboardHistoryItem {
     )
 
     [pscustomobject]@{
+        type               = 'text'
         content           = $Content
+        createdAt         = $Timestamp.ToString('o')
+        lastUsedAt        = $Timestamp.ToString('o')
+        sourceApp         = if ($null -ne $Source) { [string]$Source.AppName } else { $null }
+        sourceWindowTitle = if ($null -ne $Source) { [string]$Source.WindowTitle } else { $null }
+        sourceProcessPath = if ($null -ne $Source) { [string]$Source.ProcessPath } else { $null }
+    }
+}
+
+function New-ClipboardImageHistoryItem {
+    param(
+        [Parameter(Mandatory = $true)][string] $ImagePath,
+        [datetime] $Timestamp = (Get-Date),
+        [psobject] $Source
+    )
+
+    [pscustomobject]@{
+        type               = 'image'
+        content           = $null
+        imagePath         = $ImagePath
         createdAt         = $Timestamp.ToString('o')
         lastUsedAt        = $Timestamp.ToString('o')
         sourceApp         = if ($null -ne $Source) { [string]$Source.AppName } else { $null }
@@ -54,6 +81,25 @@ function Get-ClipboardSource {
     $windowHandle = [ClipboardHistory.NativeMethods]::GetForegroundWindow()
     if ($windowHandle -eq [IntPtr]::Zero) {
         return $null
+    }
+
+    function Get-ClipboardImageFingerprint {
+        param([Parameter(Mandatory = $true)][System.Drawing.Image] $Image)
+
+        $stream = [System.IO.MemoryStream]::new()
+        try {
+            $Image.Save($stream, [System.Drawing.Imaging.ImageFormat]::Png)
+            $hash = [System.Security.Cryptography.SHA256]::Create()
+            try {
+                return ([BitConverter]::ToString($hash.ComputeHash($stream.ToArray()))).Replace('-', '')
+            }
+            finally {
+                $hash.Dispose()
+            }
+        }
+        finally {
+            $stream.Dispose()
+        }
     }
 
     $processId = [uint32]0
@@ -104,14 +150,26 @@ function Get-ClipboardHistory {
         # Flatten it so sorting and history updates work for more than one item.
         $items = @($json | ConvertFrom-Json | ForEach-Object { $_ })
         foreach ($item in $items) {
-            if ($null -eq $item.content -or $null -eq $item.createdAt -or $null -eq $item.lastUsedAt) {
+            if ($null -eq $item.createdAt -or $null -eq $item.lastUsedAt) {
                 throw 'The history file has an invalid item.'
+            }
+            if ($null -eq $item.PSObject.Properties['type']) {
+                $item | Add-Member -NotePropertyName type -NotePropertyValue 'text'
+            }
+            if ($item.type -eq 'text' -and $null -eq $item.content) {
+                throw 'The history file has an invalid text item.'
+            }
+            if ($item.type -eq 'image' -and [string]::IsNullOrWhiteSpace([string]$item.imagePath)) {
+                throw 'The history file has an invalid image item.'
             }
             # Remove the no-longer-used counter from histories written by older versions.
             [void]$item.PSObject.Properties.Remove('useCount')
             foreach ($propertyName in @('sourceApp', 'sourceWindowTitle', 'sourceProcessPath')) {
                 if ($null -eq $item.PSObject.Properties[$propertyName]) {
                     $item | Add-Member -NotePropertyName $propertyName -NotePropertyValue $null
+                }
+                if ($item.type -eq 'text' -and $null -eq $item.PSObject.Properties['imagePath']) {
+                    $item | Add-Member -NotePropertyName imagePath -NotePropertyValue $null
                 }
             }
         }
@@ -186,15 +244,62 @@ function Add-ClipboardHistoryItem {
     return $true
 }
 
+function Add-ClipboardImageHistoryItem {
+    param(
+        [Parameter(Mandatory = $true)][System.Drawing.Image] $Image,
+        [string] $Path,
+        [ValidateRange(1, 2147483647)][int] $MaxHistory = $script:DefaultMaxHistory,
+        [psobject] $Source
+    )
+
+    $historyPath = Get-ClipboardHistoryPath $Path
+    $imageDirectory = Get-ClipboardImageDirectory -Path $historyPath
+    if (-not (Test-Path -LiteralPath $imageDirectory)) {
+        New-Item -ItemType Directory -Path $imageDirectory -Force | Out-Null
+    }
+
+    $imageFileName = '{0}.png' -f [guid]::NewGuid().ToString('N')
+    $imagePath = Join-Path $imageDirectory $imageFileName
+    try {
+        $Image.Save($imagePath, [System.Drawing.Imaging.ImageFormat]::Png)
+        $items = @(Get-ClipboardHistory -Path $historyPath)
+        $now = Get-Date
+        $allItems = @($items + (New-ClipboardImageHistoryItem -ImagePath $imagePath -Timestamp $now -Source $Source))
+        $items = @($allItems | Sort-Object { [datetime]$_.lastUsedAt } -Descending | Select-Object -First $MaxHistory)
+        foreach ($removedItem in @($allItems | Where-Object { $items -notcontains $_ -and $_.type -eq 'image' })) {
+            if (Test-Path -LiteralPath $removedItem.imagePath) {
+                Remove-Item -LiteralPath $removedItem.imagePath -Force
+            }
+        }
+        Save-ClipboardHistory -Items $items -Path $historyPath
+        return $true
+    }
+    catch {
+        if (Test-Path -LiteralPath $imagePath) {
+            Remove-Item -LiteralPath $imagePath -Force
+        }
+        throw
+    }
+}
+
 function Use-ClipboardHistoryItem {
     param(
-        [Parameter(Mandatory = $true)][string] $Content,
+        [string] $Content,
+        [psobject] $Item,
         [string] $Path,
         [ValidateRange(1, 2147483647)][int] $MaxHistory = $script:DefaultMaxHistory
     )
 
     $items = @(Get-ClipboardHistory -Path $Path)
-    $matches = @($items | Where-Object { $_.content -ceq $Content } | Select-Object -First 1)
+    if ($null -eq $Item) {
+        $matches = @($items | Where-Object { $_.type -eq 'text' -and $_.content -ceq $Content } | Select-Object -First 1)
+    }
+    else {
+        $matches = @($items | Where-Object {
+            if ($Item.type -eq 'image') { $_.type -eq 'image' -and $_.imagePath -eq $Item.imagePath }
+            else { $_.type -eq 'text' -and $_.content -ceq $Item.content }
+        } | Select-Object -First 1)
+    }
     if ($matches.Count -eq 0) {
         return $false
     }
@@ -215,6 +320,15 @@ function Get-ClipboardHistoryPreview {
     if ($preview.Length -gt $Length) {
         return $preview.Substring(0, $Length - 3) + '...'
     }
+
+    function Get-ClipboardHistoryItemLabel {
+        param([Parameter(Mandatory = $true)][psobject] $Item)
+
+        if ($Item.type -eq 'image') {
+            return '[Image]'
+        }
+        return Get-ClipboardHistoryPreview -Content ([string]$Item.content)
+    }
     return $preview
 }
 
@@ -233,7 +347,7 @@ function Show-ClipboardHistoryPicker {
     $displayItems = foreach ($item in $items) {
         [pscustomobject]@{
             LastUsed = ([datetime]$item.lastUsedAt).ToString('yyyy/MM/dd HH:mm')
-            Preview  = Get-ClipboardHistoryPreview -Content ([string]$item.content)
+            Preview  = Get-ClipboardHistoryItemLabel -Item $item
             Content  = [string]$item.content
         }
     }
@@ -255,9 +369,16 @@ function Show-ClipboardHistoryPicker {
         return $false
     }
 
+    if ($selectedDisplay.Preview -eq '[Image]') {
+        $selectedItem = $items | Where-Object { (Get-ClipboardHistoryItemLabel -Item $_) -eq $selectedDisplay.Preview } | Select-Object -First 1
+        $image = [System.Drawing.Image]::FromFile($selectedItem.imagePath)
+        try { [System.Windows.Forms.Clipboard]::SetImage($image) } finally { $image.Dispose() }
+        Use-ClipboardHistoryItem -Item $selectedItem -Path $Path -MaxHistory $MaxHistory | Out-Null
+        return $true
+    }
     Set-Clipboard -Value $selected.Content
     Use-ClipboardHistoryItem -Content $selected.Content -Path $Path -MaxHistory $MaxHistory | Out-Null
     return $true
 }
 
-Export-ModuleMember -Function Get-ClipboardHistoryPath, Get-ClipboardHistory, Save-ClipboardHistory, Add-ClipboardHistoryItem, Use-ClipboardHistoryItem, Get-ClipboardHistoryPreview, Get-ClipboardSource, Show-ClipboardHistoryPicker
+Export-ModuleMember -Function Get-ClipboardHistoryPath, Get-ClipboardHistory, Save-ClipboardHistory, Add-ClipboardHistoryItem, Add-ClipboardImageHistoryItem, Use-ClipboardHistoryItem, Get-ClipboardHistoryPreview, Get-ClipboardHistoryItemLabel, Get-ClipboardSource, Show-ClipboardHistoryPicker
