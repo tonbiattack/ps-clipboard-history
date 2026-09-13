@@ -1,5 +1,8 @@
 Set-StrictMode -Version Latest
 
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
 $script:DefaultMaxHistory = 500
 $script:DefaultMaxContentLength = 10000
 
