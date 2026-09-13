@@ -66,7 +66,13 @@ try {
                 $rowIndex = $state.Grid.Rows.Add(
                     $displayNumber,
                     ([datetime]$item.lastUsedAt).ToString('yyyy/MM/dd HH:mm:ss'),
-                    (Get-ClipboardHistoryPreview -Content ([string]$item.content))
+                    (Get-ClipboardHistoryPreview -Content ([string]$item.content)),
+                    $(if ([string]::IsNullOrWhiteSpace([string]$item.sourceApp)) {
+                        'Unknown'
+                    }
+                    else {
+                        '{0} - {1}' -f $item.sourceApp, $item.sourceWindowTitle
+                    })
                 )
                 $row = $state.Grid.Rows[$rowIndex]
                 $row.Tag = [string]$item.content
@@ -144,8 +150,10 @@ try {
         [void]$grid.Columns.Add('Number', 'No.')
         [void]$grid.Columns.Add('LastUsed', 'Last used')
         [void]$grid.Columns.Add('Preview', 'Preview')
+        [void]$grid.Columns.Add('Source', 'Copied from')
         $grid.Columns['Number'].Width = 56
         $grid.Columns['LastUsed'].Width = 150
+        $grid.Columns['Source'].Width = 300
         $grid.Columns['Preview'].AutoSizeMode = [System.Windows.Forms.DataGridViewAutoSizeColumnMode]::Fill
 
         $status = [System.Windows.Forms.Label]::new()
@@ -296,7 +304,8 @@ try {
         try {
             $content = Get-Clipboard -Raw -ErrorAction Stop
             if ($content -is [string] -and $content -cne $state.PreviousContent) {
-                $wasRecorded = Add-ClipboardHistoryItem -Content $content -Path $HistoryPath -MaxHistory $MaxHistory -MaxContentLength $MaxContentLength
+                $source = Get-ClipboardSource
+                $wasRecorded = Add-ClipboardHistoryItem -Content $content -Path $HistoryPath -MaxHistory $MaxHistory -MaxContentLength $MaxContentLength -Source $source
                 $state.PreviousContent = $content
                 if ($wasRecorded) {
                     & $refreshHistoryGrid

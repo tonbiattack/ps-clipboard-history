@@ -73,9 +73,14 @@ ps-clipboard-history/
 {
   "content": "git status",
   "createdAt": "2026-09-11T00:00:00",
-  "lastUsedAt": "2026-09-11T00:00:00"
+  "lastUsedAt": "2026-09-11T00:00:00",
+  "sourceApp": "msedge",
+  "sourceWindowTitle": "Example page",
+  "sourceProcessPath": "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe"
 }
 ```
+
+`sourceApp`、`sourceWindowTitle`、`sourceProcessPath` は、コピー時に前面にあったウィンドウのプロセス名・ウィンドウタイトル・実行ファイルパスです。既存の履歴や取得できない保護プロセスでは空欄になる場合があります。
 
 ## 5. 保存件数
 

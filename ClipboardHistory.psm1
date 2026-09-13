@@ -3,6 +3,27 @@ Set-StrictMode -Version Latest
 $script:DefaultMaxHistory = 500
 $script:DefaultMaxContentLength = 10000
 
+if (-not ('ClipboardHistory.NativeMethods' -as [type])) {
+    Add-Type @'
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+
+namespace ClipboardHistory {
+    public static class NativeMethods {
+        [DllImport("user32.dll")]
+        public static extern IntPtr GetForegroundWindow();
+
+        [DllImport("user32.dll")]
+        public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int maxCount);
+    }
+}
+'@
+}
+
 function Get-ClipboardHistoryPath {
     param([string] $Path)
 
@@ -15,13 +36,53 @@ function Get-ClipboardHistoryPath {
 function New-ClipboardHistoryItem {
     param(
         [Parameter(Mandatory = $true)][string] $Content,
-        [datetime] $Timestamp = (Get-Date)
+        [datetime] $Timestamp = (Get-Date),
+        [psobject] $Source
     )
 
     [pscustomobject]@{
-        content    = $Content
-        createdAt  = $Timestamp.ToString('o')
-        lastUsedAt = $Timestamp.ToString('o')
+        content           = $Content
+        createdAt         = $Timestamp.ToString('o')
+        lastUsedAt        = $Timestamp.ToString('o')
+        sourceApp         = if ($null -ne $Source) { [string]$Source.AppName } else { $null }
+        sourceWindowTitle = if ($null -ne $Source) { [string]$Source.WindowTitle } else { $null }
+        sourceProcessPath = if ($null -ne $Source) { [string]$Source.ProcessPath } else { $null }
+    }
+}
+
+function Get-ClipboardSource {
+    $windowHandle = [ClipboardHistory.NativeMethods]::GetForegroundWindow()
+    if ($windowHandle -eq [IntPtr]::Zero) {
+        return $null
+    }
+
+    $processId = [uint32]0
+    [void][ClipboardHistory.NativeMethods]::GetWindowThreadProcessId($windowHandle, [ref]$processId)
+    if ($processId -eq 0) {
+        return $null
+    }
+
+    try {
+        $process = [System.Diagnostics.Process]::GetProcessById([int]$processId)
+        $titleBuffer = [System.Text.StringBuilder]::new(1024)
+        [void][ClipboardHistory.NativeMethods]::GetWindowText($windowHandle, $titleBuffer, $titleBuffer.Capacity)
+        $processPath = $null
+        try {
+            $processPath = $process.MainModule.FileName
+        }
+        catch {
+            # Some protected processes do not expose their executable path.
+        }
+
+        return [pscustomobject]@{
+            AppName     = $process.ProcessName
+            WindowTitle = $titleBuffer.ToString()
+            ProcessPath = $processPath
+        }
+    }
+    catch {
+        Write-Warning "Could not identify the clipboard source application: $($_.Exception.Message)"
+        return $null
     }
 }
 
@@ -48,6 +109,11 @@ function Get-ClipboardHistory {
             }
             # Remove the no-longer-used counter from histories written by older versions.
             [void]$item.PSObject.Properties.Remove('useCount')
+            foreach ($propertyName in @('sourceApp', 'sourceWindowTitle', 'sourceProcessPath')) {
+                if ($null -eq $item.PSObject.Properties[$propertyName]) {
+                    $item | Add-Member -NotePropertyName $propertyName -NotePropertyValue $null
+                }
+            }
         }
         return @($items | Sort-Object { [datetime]$_.lastUsedAt } -Descending)
     }
@@ -91,7 +157,8 @@ function Add-ClipboardHistoryItem {
         [Parameter(Mandatory = $true)][string] $Content,
         [string] $Path,
         [ValidateRange(1, 2147483647)][int] $MaxHistory = $script:DefaultMaxHistory,
-        [ValidateRange(1, 2147483647)][int] $MaxContentLength = $script:DefaultMaxContentLength
+        [ValidateRange(1, 2147483647)][int] $MaxContentLength = $script:DefaultMaxContentLength,
+        [psobject] $Source
     )
 
     if ([string]::IsNullOrWhiteSpace($Content) -or $Content.Length -gt $MaxContentLength) {
@@ -104,9 +171,14 @@ function Add-ClipboardHistoryItem {
     if ($existing.Count -gt 0) {
         $item = $existing[0]
         $item.lastUsedAt = $now.ToString('o')
+        if ($null -ne $Source) {
+            $item.sourceApp = [string]$Source.AppName
+            $item.sourceWindowTitle = [string]$Source.WindowTitle
+            $item.sourceProcessPath = [string]$Source.ProcessPath
+        }
     }
     else {
-        $items += New-ClipboardHistoryItem -Content $Content -Timestamp $now
+        $items += New-ClipboardHistoryItem -Content $Content -Timestamp $now -Source $Source
     }
 
     $items = @($items | Sort-Object { [datetime]$_.lastUsedAt } -Descending | Select-Object -First $MaxHistory)
@@ -188,4 +260,4 @@ function Show-ClipboardHistoryPicker {
     return $true
 }
 
-Export-ModuleMember -Function Get-ClipboardHistoryPath, Get-ClipboardHistory, Save-ClipboardHistory, Add-ClipboardHistoryItem, Use-ClipboardHistoryItem, Get-ClipboardHistoryPreview, Show-ClipboardHistoryPicker
+Export-ModuleMember -Function Get-ClipboardHistoryPath, Get-ClipboardHistory, Save-ClipboardHistory, Add-ClipboardHistoryItem, Use-ClipboardHistoryItem, Get-ClipboardHistoryPreview, Get-ClipboardSource, Show-ClipboardHistoryPicker
