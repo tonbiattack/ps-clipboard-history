@@ -65,6 +65,15 @@ try {
         CopyHistoryRow  = $null
     }
 
+    $formatLastUsed = {
+        param([datetime] $Timestamp)
+
+        if ($Timestamp.Date -eq (Get-Date).Date) {
+            return $Timestamp.ToString('HH:mm')
+        }
+        return $Timestamp.ToString('MM/dd HH:mm')
+    }
+
     $updatePreview = {
         if ($null -eq $state.PreviewBox) {
             return
@@ -116,13 +125,15 @@ try {
             $selectedRow = $null
             foreach ($item in $items) {
                 $sourceApp = if ([string]::IsNullOrWhiteSpace([string]$item.sourceApp)) { 'Unknown' } else { [string]$item.sourceApp }
+                $lastUsed = [datetime]$item.lastUsedAt
                 $rowIndex = $state.Grid.Rows.Add(
-                    ([datetime]$item.lastUsedAt).ToString('yyyy/MM/dd HH:mm:ss'),
+                    (& $formatLastUsed $lastUsed),
                     (Get-ClipboardHistoryItemLabel -Item $item),
                     $sourceApp
                 )
                 $row = $state.Grid.Rows[$rowIndex]
                 $row.Tag = $item
+                $row.Cells['LastUsed'].ToolTipText = $lastUsed.ToString('yyyy/MM/dd HH:mm:ss')
                 if (-not [string]::IsNullOrWhiteSpace([string]$item.sourceWindowTitle)) {
                     $row.Cells['Source'].ToolTipText = '{0} - {1}' -f $sourceApp, $item.sourceWindowTitle
                 }
@@ -210,7 +221,7 @@ try {
         [void]$grid.Columns.Add('LastUsed', 'Last used')
         [void]$grid.Columns.Add('Preview', 'Preview')
         [void]$grid.Columns.Add('Source', 'Copied from')
-        $grid.Columns['LastUsed'].Width = 150
+        $grid.Columns['LastUsed'].Width = 90
         $grid.Columns['Source'].Width = 140
         $grid.Columns['Preview'].AutoSizeMode = [System.Windows.Forms.DataGridViewAutoSizeColumnMode]::Fill
 
