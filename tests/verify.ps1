@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param()
 
 Set-StrictMode -Version Latest
@@ -27,6 +27,13 @@ Import-Module $modulePath -Force
 
 $moduleSource = Get-Content -Raw -LiteralPath $modulePath
 Assert-That ($moduleSource -match '\$script:DefaultMaxHistory = 500') 'default history retention is 500'
+
+# Windows PowerShell 5.1 は BOM のない UTF-8 スクリプトを ANSI として解釈し得ます。
+# 日本語コメントを安全に読み込めることを、各実行スクリプトの UTF-8 BOM で回帰確認します。
+foreach ($scriptPath in @($modulePath, $watcherPath, $installerPath, (Join-Path $repoRoot 'setup.ps1'), $PSCommandPath)) {
+    $bytes = [System.IO.File]::ReadAllBytes($scriptPath)
+    Assert-That ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) "script is UTF-8 with BOM: $scriptPath"
+}
 
 Add-ClipboardHistoryItem -Content 'first' -Path $historyPath | Out-Null
 Start-Sleep -Milliseconds 5
