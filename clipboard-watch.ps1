@@ -7,10 +7,7 @@ param(
     [switch] $RunOnce,
     [string] $MutexName = 'Local\PsClipboardHistoryWatch',
     [string] $LogPath,
-    [switch] $EnableDebugLog,
-    [switch] $DisableHotkey,
-    [ValidateSet('Control', 'Alt', 'Shift', 'Windows')][string[]] $HotkeyModifiers = @('Control', 'Alt'),
-    [string] $HotkeyKey = 'V'
+    [switch] $EnableDebugLog
 )
 
 Import-Module (Join-Path $PSScriptRoot 'ClipboardHistory.psm1') -Force
@@ -41,131 +38,6 @@ function Write-WatchLog {
     }
 }
 
-if (-not ('ClipboardHistoryHotkeyWindow' -as [type])) {
-    # PowerShell 7's Core CLR splits WinForms across extra assemblies that
-    # Windows PowerShell 5.1 (Desktop CLR) does not have, so only add them there.
-    $hotkeyReferencedAssemblies = @('System.Windows.Forms', 'System.Drawing')
-    if ($PSVersionTable.PSEdition -eq 'Core') {
-        $hotkeyReferencedAssemblies += @('System.Windows.Forms.Primitives', 'System.ComponentModel.Primitives')
-    }
-    Add-Type -ReferencedAssemblies $hotkeyReferencedAssemblies -TypeDefinition @'
-using System;
-using System.Runtime.InteropServices;
-using System.Windows.Forms;
-
-// A message-only window (no UI, no taskbar entry) that owns the global hotkey
-// registration and reliably brings another window to the foreground when pressed.
-public sealed class ClipboardHistoryHotkeyWindow : NativeWindow, IDisposable
-{
-    private const int WM_HOTKEY = 0x0312;
-    private const int HotkeyId = 0x4348;
-    private const int HWND_MESSAGE = -3;
-
-    [DllImport("user32.dll")]
-    private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
-
-    [DllImport("user32.dll")]
-    private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
-
-    [DllImport("user32.dll")]
-    private static extern bool SetForegroundWindow(IntPtr hWnd);
-
-    [DllImport("user32.dll")]
-    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-
-    [DllImport("user32.dll")]
-    private static extern bool BringWindowToTop(IntPtr hWnd);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr GetForegroundWindow();
-
-    [DllImport("user32.dll")]
-    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr processId);
-
-    [DllImport("user32.dll")]
-    private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
-
-    [DllImport("kernel32.dll")]
-    private static extern uint GetCurrentThreadId();
-
-    public event EventHandler HotkeyPressed;
-    public bool IsHotkeyRegistered { get; private set; }
-
-    public ClipboardHistoryHotkeyWindow(uint modifiers, uint virtualKey)
-    {
-        CreateParams cp = new CreateParams();
-        cp.Parent = new IntPtr(HWND_MESSAGE);
-        CreateHandle(cp);
-        IsHotkeyRegistered = RegisterHotKey(Handle, HotkeyId, modifiers, virtualKey);
-    }
-
-    // AttachThreadInput lets the calling thread borrow the foreground thread's
-    // input state, which is what makes SetForegroundWindow reliable even when
-    // this process is not already the foreground process.
-    public static void BringToForeground(Form window)
-    {
-        IntPtr foregroundWindow = GetForegroundWindow();
-        uint currentThread = GetCurrentThreadId();
-        uint foregroundThread = foregroundWindow == IntPtr.Zero
-            ? 0
-            : GetWindowThreadProcessId(foregroundWindow, IntPtr.Zero);
-        bool attached = foregroundThread != 0 && foregroundThread != currentThread
-            && AttachThreadInput(currentThread, foregroundThread, true);
-
-        try
-        {
-            if (window.WindowState == FormWindowState.Minimized)
-            {
-                window.WindowState = FormWindowState.Normal;
-            }
-
-            window.Show();
-            ShowWindow(window.Handle, 9); // SW_RESTORE
-            window.TopMost = true;
-            window.Activate();
-            window.BringToFront();
-            BringWindowToTop(window.Handle);
-            SetForegroundWindow(window.Handle);
-            window.TopMost = false;
-        }
-        finally
-        {
-            if (attached)
-            {
-                AttachThreadInput(currentThread, foregroundThread, false);
-            }
-        }
-    }
-
-    protected override void WndProc(ref Message m)
-    {
-        if (m.Msg == WM_HOTKEY && m.WParam.ToInt32() == HotkeyId)
-        {
-            EventHandler handler = HotkeyPressed;
-            if (handler != null)
-            {
-                handler(this, EventArgs.Empty);
-            }
-        }
-        base.WndProc(ref m);
-    }
-
-    public void Dispose()
-    {
-        if (Handle != IntPtr.Zero)
-        {
-            if (IsHotkeyRegistered)
-            {
-                UnregisterHotKey(Handle, HotkeyId);
-                IsHotkeyRegistered = false;
-            }
-            DestroyHandle();
-        }
-    }
-}
-'@
-}
-
 $mutex = [System.Threading.Mutex]::new($false, $MutexName)
 if (-not $mutex.WaitOne(0, $false)) {
     Write-Host 'clipboard-watch.ps1 is already running.'
@@ -181,7 +53,6 @@ try {
     $trayIcon = $null
     $menu = $null
     $timer = $null
-    $hotkeyWindow = $null
 
     $state = [pscustomobject]@{
         PreviousContent = $null
@@ -294,7 +165,12 @@ try {
 
     $openHistory = {
         if ($null -ne $state.HistoryForm -and -not $state.HistoryForm.IsDisposed) {
-            [ClipboardHistoryHotkeyWindow]::BringToForeground($state.HistoryForm)
+            if ($state.HistoryForm.WindowState -eq [System.Windows.Forms.FormWindowState]::Minimized) {
+                $state.HistoryForm.WindowState = [System.Windows.Forms.FormWindowState]::Normal
+            }
+            $state.HistoryForm.Show()
+            $state.HistoryForm.Activate()
+            $state.HistoryForm.BringToFront()
             if ($null -ne $state.SearchBox) {
                 $state.SearchBox.Focus()
                 $state.SearchBox.SelectAll()
@@ -458,7 +334,7 @@ try {
             }
         })
 
-        [ClipboardHistoryHotkeyWindow]::BringToForeground($historyForm)
+        $historyForm.Show()
         & $refreshHistoryGrid
         $grid.Focus()
     }
@@ -529,29 +405,6 @@ try {
     $notifyIcon.Add_DoubleClick($openHistory)
     $exitMenuItem.Add_Click({ $applicationContext.ExitThread() })
 
-    if (-not $DisableHotkey) {
-        $modifierValues = @{ Alt = 0x0001; Control = 0x0002; Shift = 0x0004; Windows = 0x0008 }
-        $hotkeyModifierMask = 0
-        foreach ($modifierName in $HotkeyModifiers) {
-            $hotkeyModifierMask = $hotkeyModifierMask -bor $modifierValues[$modifierName]
-        }
-        $hotkeyLabel = ($HotkeyModifiers + $HotkeyKey.ToUpperInvariant()) -join '+'
-        try {
-            $virtualKey = [uint32][System.Windows.Forms.Keys]::Parse([System.Windows.Forms.Keys], $HotkeyKey, $true)
-            $hotkeyWindow = [ClipboardHistoryHotkeyWindow]::new($hotkeyModifierMask, $virtualKey)
-            if ($hotkeyWindow.IsHotkeyRegistered) {
-                $hotkeyWindow.Add_HotkeyPressed($openHistory)
-                Write-WatchLog -Message ('Registered the {0} global hotkey.' -f $hotkeyLabel)
-            }
-            else {
-                Write-WatchLog -Level WARN -Message ('Could not register the {0} global hotkey (likely already in use by another app).' -f $hotkeyLabel)
-            }
-        }
-        catch {
-            Write-WatchLog -Level WARN -Message "Invalid -HotkeyKey '$HotkeyKey': $($_.Exception.Message)"
-        }
-    }
-
     $timer.Start()
     $notifyIcon.Visible = $true
     & $openHistory
@@ -564,9 +417,6 @@ catch {
     throw
 }
 finally {
-    if ($null -ne $hotkeyWindow) {
-        $hotkeyWindow.Dispose()
-    }
     if ($null -ne $notifyIcon) {
         $notifyIcon.Visible = $false
         $notifyIcon.Dispose()
