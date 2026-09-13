@@ -50,6 +50,7 @@ Write-WatchLog -Message ('Starting clipboard-watch.ps1 (PID {0}).' -f $PID)
 try {
     $applicationContext = $null
     $notifyIcon = $null
+    $trayIcon = $null
     $menu = $null
     $timer = $null
 
@@ -387,7 +388,14 @@ try {
     $openMenuItem = $menu.Items.Add('Open history')
     $exitMenuItem = $menu.Items.Add('Exit')
     $notifyIcon = [System.Windows.Forms.NotifyIcon]::new()
-    $notifyIcon.Icon = [System.Drawing.SystemIcons]::Application
+    $trayIconPath = Join-Path $PSScriptRoot 'assets\tray-icon.ico'
+    if (Test-Path -LiteralPath $trayIconPath -PathType Leaf) {
+        $trayIcon = [System.Drawing.Icon]::new($trayIconPath)
+        $notifyIcon.Icon = $trayIcon
+    }
+    else {
+        $notifyIcon.Icon = [System.Drawing.SystemIcons]::Application
+    }
     $notifyIcon.Text = 'Clipboard History'
     $notifyIcon.ContextMenuStrip = $menu
 
@@ -412,6 +420,9 @@ finally {
     if ($null -ne $notifyIcon) {
         $notifyIcon.Visible = $false
         $notifyIcon.Dispose()
+    }
+    if ($null -ne $trayIcon) {
+        $trayIcon.Dispose()
     }
     if ($null -ne $menu) {
         $menu.Dispose()

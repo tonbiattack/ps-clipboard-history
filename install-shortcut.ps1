@@ -48,13 +48,16 @@ if (-not (Test-Path -LiteralPath $wscript -PathType Leaf)) {
     $wscript = (Get-Command wscript.exe -ErrorAction Stop).Source
 }
 
+$trayIconPath = Join-Path $PSScriptRoot 'assets\tray-icon.ico'
+$iconLocation = if (Test-Path -LiteralPath $trayIconPath -PathType Leaf) { "$trayIconPath,0" } else { "$windowsPowerShell,0" }
+
 $shell = New-Object -ComObject WScript.Shell
 $shortcut = $shell.CreateShortcut($shortcutPath)
 $shortcut.TargetPath = $wscript
 $shortcut.Arguments = '"{0}"' -f $watcherLauncherPath
 $shortcut.WorkingDirectory = $PSScriptRoot
 $shortcut.Description = 'Open the Clipboard History resident app'
-$shortcut.IconLocation = "$windowsPowerShell,0"
+$shortcut.IconLocation = $iconLocation
 $shortcut.Save()
 
 $watcherShortcut = $shell.CreateShortcut($watcherShortcutPath)
@@ -62,7 +65,7 @@ $watcherShortcut.TargetPath = $wscript
 $watcherShortcut.Arguments = '"{0}"' -f $watcherLauncherPath
 $watcherShortcut.WorkingDirectory = $PSScriptRoot
 $watcherShortcut.Description = 'Run ps-clipboard-history watcher without a console window'
-$watcherShortcut.IconLocation = "$windowsPowerShell,0"
+$watcherShortcut.IconLocation = $iconLocation
 $watcherShortcut.Save()
 
 Write-Host "Created shortcut: $shortcutPath"
