@@ -18,22 +18,65 @@ function Assert-That {
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $modulePath = Join-Path $repoRoot 'ClipboardHistory.psm1'
 $watcherPath = Join-Path $repoRoot 'clipboard-watch.ps1'
+$logCommandModulePath = Join-Path $repoRoot 'LogCommand.psm1'
+$logCommandScriptPath = Join-Path $repoRoot 'log-command.ps1'
 $installerPath = Join-Path $repoRoot 'install-shortcut.ps1'
 $testRoot = Join-Path $env:TEMP ('ps-clipboard-history-verify-' + [guid]::NewGuid().ToString())
 $historyPath = Join-Path $testRoot 'history.json'
 
 New-Item -ItemType Directory -Path $testRoot -Force | Out-Null
 Import-Module $modulePath -Force
+Import-Module $logCommandModulePath -Force
 
 $moduleSource = Get-Content -Raw -LiteralPath $modulePath
 Assert-That ($moduleSource -match '\$script:DefaultMaxHistory = 500') 'default history retention is 500'
 
 # Windows PowerShell 5.1 は BOM のない UTF-8 スクリプトを ANSI として解釈し得ます。
 # 日本語コメントを安全に読み込めることを、各実行スクリプトの UTF-8 BOM で回帰確認します。
-foreach ($scriptPath in @($modulePath, $watcherPath, $installerPath, (Join-Path $repoRoot 'setup.ps1'), $PSCommandPath)) {
+foreach ($scriptPath in @($modulePath, $watcherPath, $logCommandModulePath, $logCommandScriptPath, $installerPath, (Join-Path $repoRoot 'setup.ps1'), $PSCommandPath)) {
     $bytes = [System.IO.File]::ReadAllBytes($scriptPath)
     Assert-That ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) "script is UTF-8 with BOM: $scriptPath"
 }
+
+$openCommand = New-LinuxLogCommand -LogFile '/var/log/my-app/application.log'
+Assert-That ($openCommand -eq "less -N -S -- '/var/log/my-app/application.log'") 'file-only log command opens less without wrapping long lines'
+
+$singleQuote = [string][char]39
+$doubleQuote = [string][char]34
+$escapedQuote = $singleQuote + $doubleQuote + $singleQuote + $doubleQuote + $singleQuote
+$expectedQuotedPath = $singleQuote + '/var/log/O' + $escapedQuote + 'Reilly/app.log' + $singleQuote
+$quotedPathCommand = New-LinuxLogCommand -LogFile "/var/log/O'Reilly/app.log"
+Assert-That ($quotedPathCommand -eq ('less -N -S -- ' + $expectedQuotedPath)) 'log paths are quoted safely for a POSIX shell'
+
+$searchCommand = New-LinuxLogCommand -LogFile '/var/log/app.log' -Preset Search -Needle 'upstream timeout'
+Assert-That ($searchCommand -eq "grep -F -n -m 20 -C 3 -- 'upstream timeout' '/var/log/app.log' | less -S") 'fixed-string search includes line numbers and context'
+
+$recentSearchCommand = New-LinuxLogCommand -LogFile '/var/log/app.log' -Preset RecentSearch -Needle 'upstream timeout'
+Assert-That ($recentSearchCommand -eq "tail -n 20000 -- '/var/log/app.log' | grep -F -n -m 20 -C 3 -- 'upstream timeout' | less -S") 'recent search limits the initial scan range'
+
+$sliceCommand = New-LinuxLogCommand -LogFile '/var/log/app.log' -Preset Slice -Line 418 -Start 2001 -Width 2000
+Assert-That ($sliceCommand -eq "sed -n '418p' -- '/var/log/app.log' | awk -v start=2001 -v width=2000 '{ print substr(`$0, start, width) }'") 'line slice command keeps a bounded excerpt'
+
+$missingNeedleFails = $false
+try {
+    New-LinuxLogCommand -LogFile '/var/log/app.log' -Preset Search | Out-Null
+}
+catch {
+    $missingNeedleFails = $_.Exception.Message -like '*Needle must not be empty*'
+}
+Assert-That $missingNeedleFails 'search command rejects a missing search string'
+
+$missingLineFails = $false
+try {
+    New-LinuxLogCommand -LogFile '/var/log/app.log' -Preset Line | Out-Null
+}
+catch {
+    $missingLineFails = $_.Exception.Message -like '*Line must be greater than or equal to 1*'
+}
+Assert-That $missingLineFails 'line command rejects a missing line number'
+
+$scriptOutput = @(& $logCommandScriptPath -LogFile '/var/log/app.log' -Preset Tail -NoCopy)
+Assert-That ($scriptOutput.Count -eq 1 -and $scriptOutput[0] -eq "tail -n 300 -- '/var/log/app.log' | less -S") 'command helper can print a command without changing the clipboard'
 
 Add-ClipboardHistoryItem -Content 'first' -Path $historyPath | Out-Null
 Start-Sleep -Milliseconds 5
