@@ -67,9 +67,31 @@ Assert-That ($watcherSource -match 'Keys\]::Enter') 'Enter copies the selected r
 Assert-That ($watcherSource -notmatch "Columns\.Add\('Number'") 'number column is absent'
 Assert-That ($watcherSource -notmatch 'NumberPrefix') 'number-prefix history selection is absent'
 Assert-That ($watcherSource -notmatch '\$state\.HistoryForm\.Hide\(\)') 'history window remains open after copying a row'
-Assert-That ($watcherSource -notmatch 'RegisterHotKey') 'global hotkey registration is absent'
-Assert-That ($watcherSource -notmatch 'ClipboardHistoryHotkeyForm') 'hotkey host form is absent'
-Assert-That ($watcherSource -match 'ApplicationContext') 'tray application uses an application context without a hotkey form'
+Assert-That ($watcherSource -match 'RegisterHotKey') 'global hotkey registration exists'
+Assert-That ($watcherSource -match 'ClipboardHistoryHotkeyWindow') 'hotkey host window exists'
+Assert-That ($watcherSource -match 'NativeWindow') 'hotkey host uses a native message window'
+Assert-That ($watcherSource -match 'HWND_MESSAGE') 'hotkey host is message-only'
+Assert-That ($watcherSource -match 'ModNoRepeat') 'hotkey suppresses repeat key messages'
+Assert-That ($watcherSource -match 'SetLastError = true') 'hotkey registration records the Windows error'
+Assert-That ($watcherSource -match 'RegistrationError') 'hotkey registration failure reason is logged'
+
+$hotkeyTypeMatch = [regex]::Match($watcherSource, "(?s)Add-Type -ReferencedAssemblies .*? -TypeDefinition @'\r?\n(?<definition>.*?)\r?\n'@")
+Assert-That $hotkeyTypeMatch.Success 'embedded hotkey type definition can be found'
+$hotkeyTypeReferences = @('System.Windows.Forms', 'System.Drawing')
+if ($PSVersionTable.PSEdition -eq 'Core') {
+    $hotkeyTypeReferences += @('System.Windows.Forms.Primitives', 'System.ComponentModel.Primitives')
+}
+$hotkeyType = Add-Type -ReferencedAssemblies $hotkeyTypeReferences -TypeDefinition $hotkeyTypeMatch.Groups['definition'].Value -PassThru -ErrorAction Stop
+Assert-That ($hotkeyType.Name -eq 'ClipboardHistoryHotkeyWindow') 'embedded hotkey type compiles'
+
+Assert-That ($watcherSource -match 'AttachThreadInput') 'hotkey foreground helper joins the active input thread'
+Assert-That ($watcherSource -match 'BringToForeground') 'hotkey foreground helper is used to show the history window'
+Assert-That ($watcherSource -match '\$DisableHotkey') 'hotkey can be opted out of'
+Assert-That ($watcherSource -match '\$HotkeyModifiers') 'hotkey modifiers are configurable'
+Assert-That ($watcherSource -match '\$HotkeyKey') 'hotkey key is configurable'
+Assert-That ($watcherSource -match 'ValidatePattern') 'hotkey key input is validated'
+Assert-That ($watcherSource -match '\$hotkeyWindow\.Dispose\(\)') 'hotkey registration is released on shutdown'
+Assert-That ($watcherSource -match 'ApplicationContext') 'tray application uses an application context'
 Assert-That ($watcherSource -match "Font\]::new\('Segoe UI', 12") 'history UI uses a readable 12pt font'
 Assert-That ($watcherSource -match 'RowTemplate.Height = 32') 'history UI uses readable row height'
 Assert-That ($watcherSource -notmatch "Columns\.Add\('Count'") 'count column is absent'
